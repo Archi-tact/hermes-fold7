@@ -25,7 +25,10 @@ async def main():
             first = json.loads(await asyncio.wait_for(ws.recv(), 20))
             ok(f"토큰으로 원격 연결 → 첫 신호 {first.get('params', {}).get('type') or first.get('method')}")
             r = await rpc(ws, "d1", "session.list", {"limit": 5})
-            "result" in r and ok(f"원격에서 대화 목록 조회 ({len(r['result'].get('sessions', []))}개)") or bad(f"session.list {r}")
+            if "result" in r:
+                ok(f"원격에서 대화 목록 조회 ({len(r['result'].get('sessions', []))}개)")
+            else:
+                bad(f"session.list {r}")
     except Exception as e:
         bad(f"토큰 원격 연결 실패: {e!r}")
     # 2) 틀린 토큰은 거부

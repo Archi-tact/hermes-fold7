@@ -249,7 +249,16 @@ case "$ACTION" in
   adb-shell)     need 1 "COMMAND..."; adb_ready; A "${ARGS[@]}"; rc=$?; adb_done; exit $rc ;;
 
   settings)      adb_ready; settings_json; adb_done ;;
-  set)           need 2 "이름 값  (phone set dark on / brightness 120 / volume media 7 …)"; adb_ready; do_set "$(arg 0)" "$(arg 1)" "${ARGS[2]:-}"; adb_done ;;
+  set)           need 2 "이름 값  (phone set dark on / brightness 120 / volume media 7 …)"
+                 # 밝기·볼륨은 무선 디버깅 없이도 Termux:API 로 가능 → ADB 가 안 되면 그쪽으로
+                 if ! ( adb_ready ) >/dev/null 2>&1; then
+                   case "$(arg 0)" in
+                     brightness) rng "$(arg 1)" 0 255; termux-brightness "$(arg 1)" >/dev/null && jq -cn --arg v "$(arg 1)" '{ok:true, setting:"brightness", value:$v, via:"termux-api"}'; exit ;;
+                     volume) case "$(arg 1)" in media) st=music ;; ring|alarm|notification|call) st="$(arg 1)" ;; *) die "volume media|ring|alarm|notification|call 0~15" ;; esac
+                             rng "${ARGS[2]:-}" 0 15; termux-volume "$st" "${ARGS[2]}" >/dev/null && jq -cn --arg v "$(arg 1) ${ARGS[2]}" '{ok:true, setting:"volume", value:$v, via:"termux-api"}'; exit ;;
+                   esac
+                 fi
+                 adb_ready; do_set "$(arg 0)" "$(arg 1)" "${ARGS[2]:-}"; adb_done ;;
 
   hands-status)  hands status ;;
   hands-start)   need 3 "MINUTES PKG[,PKG..] TITLE"; int "$(arg 0)"

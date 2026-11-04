@@ -27,6 +27,8 @@ MUST_ALLOW = [
     "rm -rf build",
     "phone hands-dump",
     "phone hands-click 3",
+    "phone set dark on",
+    "phone settings",
 ]
 fail = 0
 for cmd in MUST_BLOCK:

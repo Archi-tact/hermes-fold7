@@ -36,3 +36,12 @@ hands-start=confirm
 hands-dump=allow
 hands-click=allow
 hands-type=allow
+
+# 설정 직접 변경 (phone set 이름 값) — 항목별로 set-<이름> 지정 가능
+settings=allow
+set=allow
+set-wifi=confirm
+set-airplane=confirm
+set-mobile-data=confirm
+set-location=confirm
+set-app-stop=confirm

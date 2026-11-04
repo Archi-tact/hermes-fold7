@@ -48,6 +48,10 @@ declare -A POLICY=(
   [hands-status]=allow [hands-start]=confirm [hands-stop]=allow [hands-dump]=allow
   [hands-click]=allow [hands-type]=allow [hands-scroll]=allow [hands-back]=allow [hands-home]=allow
   [hands-launch]=allow [hands-tap]=allow [hands-swipe]=allow [hands-wait]=allow
+  # 설정 직접 변경 (화면 터치 없이, 무선 디버깅 ADB 셸 권한 — MacroDroid 도우미와 같은 방식)
+  #   set-<이름> 으로 항목별 정책 지정. 연결이 끊길 수 있는 항목은 기본 confirm
+  [settings]=allow [set]=allow
+  [set-wifi]=confirm [set-airplane]=confirm [set-mobile-data]=confirm [set-location]=confirm [set-app-stop]=confirm
 )
 if [ -f "$POLICY_FILE" ]; then
   while IFS='=' read -r k v; do
@@ -70,6 +74,8 @@ done
 ACTION="${ARGS[0]}"; ARGS=("${ARGS[@]:1}")
 [[ -n "${POLICY[$ACTION]+x}" ]] || die "unknown action: $ACTION (phone help 참고)"
 MODE="${POLICY[$ACTION]}"
+# set 은 항목별 정책이 있으면 그것을 따름 (예: set-wifi=confirm)
+if [ "$ACTION" = set ] && [ -n "${ARGS[0]:-}" ] && [ -n "${POLICY[set-${ARGS[0]}]+x}" ]; then MODE="${POLICY[set-${ARGS[0]}]}"; fi
 [ "$MODE" = deny ] && die "action '$ACTION' is denied by policy"
 
 arg()  { printf '%s' "${ARGS[$1]:-}"; }
@@ -145,6 +151,57 @@ adb_done() { [ "$ADB_KILL_AFTER" = 1 ] && adb kill-server >/dev/null 2>&1; true;
 A() { adb shell -- "$@"; }   # 인자 배열 그대로 전달 (adb가 원격에서 공백 결합하므로 값 검증 필수)
 safe_word() { [[ "$1" =~ ^[A-Za-z0-9._:/-]+$ ]] || die "unsafe value: $1"; }
 
+# ---------- 설정 직접 변경 ----------
+onoff() { case "$1" in on|1|true|yes|켜기) echo on ;; off|0|false|no|끄기) echo off ;; *) die "on 또는 off: $1" ;; esac; }
+rng()   { int "$1"; [ "$1" -ge "$2" ] && [ "$1" -le "$3" ] || die "범위 $2~$3: $1"; }
+sget()  { A settings get "$1" "$2" 2>/dev/null | tr -d '\r'; }
+settings_json() {
+  jq -n --arg dark "$(A cmd uimode night 2>/dev/null | tr -d '\r' | awk '{print $NF}')" \
+    --arg bright "$(sget system screen_brightness)" --arg auto "$(sget system screen_brightness_mode)" \
+    --arg timeout "$(sget system screen_off_timeout)" --arg rotate "$(sget system accelerometer_rotation)" \
+    --arg zen "$(sget global zen_mode)" --arg wifi "$(sget global wifi_on)" --arg bt "$(sget global bluetooth_on)" \
+    --arg air "$(sget global airplane_mode_on)" --arg data "$(sget global mobile_data)" \
+    --arg saver "$(sget global low_power)" --arg font "$(sget system font_scale)" \
+    --arg anim "$(sget global window_animation_scale)" --arg awake "$(sget global stay_on_while_plugged_in)" \
+    --arg loc "$(sget secure location_mode)" \
+    '{ok:true, dark:$dark, brightness:$bright, auto_brightness:$auto, screen_timeout_ms:$timeout, auto_rotate:$rotate,
+      dnd_zen_mode:$zen, wifi:$wifi, bluetooth:$bt, airplane:$air, mobile_data:$data, battery_saver:$saver,
+      font_scale:$font, animation_scale:$anim, stay_awake:$awake, location_mode:$loc}'
+}
+do_set() {  # do_set 이름 값 [값2] → 바꾼 뒤 실제 값을 다시 읽어서 돌려줌
+  local n="$1" v="${2:-}" now="" on
+  case "$n" in
+    dark)            on="$(onoff "$v")"; A cmd uimode night "$([ "$on" = on ] && echo yes || echo no)" >/dev/null
+                     now="$(A cmd uimode night | tr -d '\r')" ;;
+    brightness)      rng "$v" 0 255; A settings put system screen_brightness_mode 0; A settings put system screen_brightness "$v"; now="$(sget system screen_brightness)" ;;
+    auto-brightness) on="$(onoff "$v")"; A settings put system screen_brightness_mode "$([ "$on" = on ] && echo 1 || echo 0)"; now="$(sget system screen_brightness_mode)" ;;
+    timeout)         rng "$v" 15 1800; A settings put system screen_off_timeout "$((v*1000))"; now="$(sget system screen_off_timeout)" ;;
+    rotate)          on="$(onoff "$v")"; A settings put system accelerometer_rotation "$([ "$on" = on ] && echo 1 || echo 0)"; now="$(sget system accelerometer_rotation)" ;;
+    font)            [[ "$v" =~ ^[01](\.[0-9]{1,2})?$ ]] && awk -v x="$v" 'BEGIN{exit !(x>=0.8 && x<=1.5)}' || die "글자 크기 0.8~1.5: $v"
+                     A settings put system font_scale "$v"; now="$(sget system font_scale)" ;;
+    animations)      [[ "$v" =~ ^(0|0\.5|1|1\.5|2)$ ]] || die "애니메이션 0|0.5|1|1.5|2"
+                     for k in window_animation_scale transition_animation_scale animator_duration_scale; do A settings put global "$k" "$v"; done
+                     now="$(sget global animator_duration_scale)" ;;
+    stay-awake)      on="$(onoff "$v")"; A settings put global stay_on_while_plugged_in "$([ "$on" = on ] && echo 7 || echo 0)"; now="$(sget global stay_on_while_plugged_in)" ;;
+    dnd)             on="$(onoff "$v")"; A cmd notification set_dnd "$([ "$on" = on ] && echo priority || echo off)" >/dev/null; sleep 1; now="zen_mode=$(sget global zen_mode)" ;;
+    battery-saver)   on="$(onoff "$v")"; A cmd power set-mode "$([ "$on" = on ] && echo 1 || echo 0)" >/dev/null; sleep 1; now="low_power=$(sget global low_power)" ;;
+    wifi)            on="$(onoff "$v")"; A svc wifi "$([ "$on" = on ] && echo enable || echo disable)"; sleep 2; now="wifi_on=$(sget global wifi_on)" ;;
+    bluetooth)       on="$(onoff "$v")"; A svc bluetooth "$([ "$on" = on ] && echo enable || echo disable)" >/dev/null 2>&1 \
+                       || A cmd bluetooth_manager "$([ "$on" = on ] && echo enable || echo disable)" >/dev/null; sleep 2; now="bluetooth_on=$(sget global bluetooth_on)" ;;
+    mobile-data)     on="$(onoff "$v")"; A svc data "$([ "$on" = on ] && echo enable || echo disable)"; sleep 1; now="mobile_data=$(sget global mobile_data)" ;;
+    airplane)        on="$(onoff "$v")"; A cmd connectivity airplane-mode "$([ "$on" = on ] && echo enable || echo disable)"; sleep 1; now="airplane=$(sget global airplane_mode_on)" ;;
+    location)        on="$(onoff "$v")"; A cmd location set-location-enabled "$([ "$on" = on ] && echo true || echo false)"; now="location_mode=$(sget secure location_mode)" ;;
+    nfc)             on="$(onoff "$v")"; A svc nfc "$([ "$on" = on ] && echo enable || echo disable)"; now="(nfc ${on})" ;;
+    volume)          local st; case "$v" in media) st=3 ;; ring) st=2 ;; alarm) st=4 ;; notification) st=5 ;; call) st=0 ;; *) die "volume media|ring|alarm|notification|call 0~15" ;; esac
+                     rng "${3:-}" 0 15; A cmd media_session volume --stream "$st" --set "$3" >/dev/null 2>&1 || A media volume --stream "$st" --set "$3" >/dev/null 2>&1
+                     now="$(A cmd media_session volume --stream "$st" --get 2>/dev/null | tr -d '\r' | grep -oE 'volume is [0-9]+' | head -1)" ;;
+    app-stop)        pkg_ok "$v"; case "$v" in com.termux*|ai.hermesfold7.hands|android|com.android.systemui) die "이 앱은 멈출 수 없음: $v" ;; esac
+                     A am force-stop "$v"; now="stopped" ;;
+    *) die "모르는 설정: $n (가능: dark brightness auto-brightness timeout rotate font animations stay-awake dnd battery-saver wifi bluetooth mobile-data airplane location nfc volume app-stop)" ;;
+  esac
+  jq -cn --arg n "$n" --arg v "$v${3:+ $3}" --arg now "$now" '{ok:true, setting:$n, value:$v, now:$now}'
+}
+
 # ---------- Hermes Hands 헬퍼 (127.0.0.1:47800, 토큰 인증 한 줄 JSON) ----------
 pkg_ok() { [[ "$1" =~ ^[A-Za-z0-9_.]+$ ]] || die "bad package: $1"; }
 node_sel() {  # 숫자면 i, text:… / id:… 형태 지원
@@ -189,6 +246,9 @@ case "$ACTION" in
   adb-key)       need 1 "KEYCODE(예: KEYCODE_HOME)"; [[ "$(arg 0)" =~ ^(KEYCODE_[A-Z0-9_]+|[0-9]{1,3})$ ]] || die "bad keycode"; adb_ready; A input keyevent "$(arg 0)" && echo '{"ok":true}'; adb_done ;;
   adb-setting-get) need 2 "system|secure|global KEY"; [[ "$(arg 0)" =~ ^(system|secure|global)$ ]] || die "namespace"; safe_word "$(arg 1)"; adb_ready; A settings get "$(arg 0)" "$(arg 1)"; adb_done ;;
   adb-shell)     need 1 "COMMAND..."; adb_ready; A "${ARGS[@]}"; rc=$?; adb_done; exit $rc ;;
+
+  settings)      adb_ready; settings_json; adb_done ;;
+  set)           need 2 "이름 값  (phone set dark on / brightness 120 / volume media 7 …)"; adb_ready; do_set "$(arg 0)" "$(arg 1)" "${ARGS[2]:-}"; adb_done ;;
 
   hands-status)  hands status ;;
   hands-start)   need 3 "MINUTES PKG[,PKG..] TITLE"; int "$(arg 0)"

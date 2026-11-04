@@ -49,6 +49,27 @@ All phone features go through ONE command: `phone <action> [args...]`.
 | `adb-ui-dump` | | UI hierarchy XML (bounds for taps) |
 | `adb-tap X Y`, `adb-swipe X1 Y1 X2 Y2 [MS]`, `adb-text TEXT`, `adb-key KEYCODE_*` | | screen control |
 | `adb-setting-get` | system\|secure\|global KEY | read a setting |
+| `settings` | | current values of common settings as JSON (dark, brightness, timeout, wifi, bluetooth, dnd, …) |
+| `set NAME VALUE` | see below | change a setting directly — no screen taps, returns the value read back |
+
+### Direct settings (`phone set`) — prefer this over tapping through the Settings app
+
+| NAME | VALUE | Example |
+|---|---|---|
+| `dark` | on\|off | `phone set dark on` |
+| `brightness` | 0-255 (turns auto off) | `phone set brightness 120` |
+| `auto-brightness`, `rotate`, `stay-awake`, `dnd`, `battery-saver` | on\|off | `phone set dnd on` |
+| `timeout` | seconds 15-1800 | `phone set timeout 60` |
+| `font` | 0.8-1.5 | `phone set font 1.1` |
+| `animations` | 0\|0.5\|1\|1.5\|2 | `phone set animations 0.5` |
+| `volume` | media\|ring\|alarm\|notification\|call + 0-15 | `phone set volume media 7` |
+| `wifi`, `bluetooth`, `mobile-data`, `airplane`, `location`, `nfc` | on\|off | `phone set bluetooth off` |
+| `app-stop` | PACKAGE | force-stop an app (confirm) |
+
+- `wifi`, `airplane`, `mobile-data`, `location`, `app-stop` need the user to approve on screen.
+  Turning Wi‑Fi off or airplane mode on **disconnects wireless debugging**, so later `set`/`adb-*` calls fail until Wi‑Fi is back.
+- Always check the returned `now` value; if it did not change, say so instead of claiming success.
+- Use `phone settings` first when the user asks "what is it set to now".
 
 ## Screen automation loop
 

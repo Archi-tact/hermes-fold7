@@ -261,6 +261,31 @@ if [ -n "$BROWSER" ] && launch "$BROWSER"; then
   else bad "⑥ 주소창 못 찾음"; fi
 else bad "⑥ 브라우저 실행"; fi
 
+# ---------- ⑦ 설정 직접 변경: 화면 터치 없이 값만 바꾸기 (phone set) ----------
+echo "== ⑦ 설정 직접 변경 (터치 없이)"
+ph sp0 hands-stop >/dev/null      # 화면 조작 세션과 무관함을 보여주려고 먼저 종료
+S="$(ph g0 settings)"; echo "     현재: $(grep '^{' <<<"$S" | tail -1 | jq -c '{dark,brightness,screen_timeout_ms,auto_rotate,font_scale,stay_awake,dnd_zen_mode}' 2>/dev/null)"
+setchk() {  # setchk 설명 '확인할 셸 명령' 기대정규식 -- phone set 인자들
+  local desc="$1" chk="$2" want="$3"; shift 4
+  local r got; r="$(ph "set$((++NC))" set "$@")"; got="$(AS $chk 2>/dev/null | tr -d '\r')"
+  if [ "$(jqv .ok "$r")" = true ] && [[ "$got" =~ $want ]]; then ok "⑦ $desc → 실제 값 '$got'"
+  else bad "⑦ $desc (응답 $(grep '^{' <<<"$r" | tail -1), 실제 '$got')"; fi
+}
+setchk "다크 모드 끄기"      "cmd uimode night"                        "no"   -- dark off
+setchk "다크 모드 켜기"      "cmd uimode night"                        "yes"  -- dark on
+setchk "밝기 77"             "settings get system screen_brightness"   "^77$" -- brightness 77
+setchk "화면 꺼짐 45초"      "settings get system screen_off_timeout"  "^45000$" -- timeout 45
+setchk "자동 회전 끄기"      "settings get system accelerometer_rotation" "^0$" -- rotate off
+setchk "글자 크기 1.15"      "settings get system font_scale"          "^1\.15$" -- font 1.15
+setchk "애니메이션 0.5배"    "settings get global animator_duration_scale" "^0\.5$" -- animations 0.5
+setchk "충전 중 화면 켜둠"   "settings get global stay_on_while_plugged_in" "^7$" -- stay-awake on
+setchk "방해 금지 켜기"      "settings get global zen_mode"            "^[1-3]$" -- dnd on
+setchk "방해 금지 끄기"      "settings get global zen_mode"            "^0$" -- dnd off
+R="$(ph setx set brightness 999)"; [[ "$R" == *"범위"* ]] && ok "⑦ 범위 밖 값 거부 (밝기 999)" || bad "⑦ 범위 검사: $R"
+R="$(ph sety set 'dark;reboot' on)"; [[ "$R" == *"모르는 설정"* ]] && ok "⑦ 이상한 이름 거부 (명령 끼워넣기 차단)" || bad "⑦ 이름 검사: $R"
+AS settings put system font_scale 1.0; AS settings put global animator_duration_scale 1; AS settings put global window_animation_scale 1; AS settings put global transition_animation_scale 1
+snap "settings-direct"
+
 echo "== 세션 종료"
 ph sp hands-stop >/dev/null; sleep 1
 S="$(ph st9 hands-status)"; [ "$(jqv .session "$S")" = false ] && ok "세션 종료 · 보호막 해제" || bad "세션 종료"

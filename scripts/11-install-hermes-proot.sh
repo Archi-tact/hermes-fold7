@@ -28,11 +28,21 @@ apt-get install -y --no-install-recommends ca-certificates curl git sudo xz-util
 # 공식 설치 스크립트를 먼저 내려받아 확인 후 실행 (파이프 직결 X)
 curl -fsSL https://hermes-agent.nousresearch.com/install.sh -o /tmp/hermes-install.sh
 echo "---- install.sh sha256: $(sha256sum /tmp/hermes-install.sh | cut -d" " -f1)"
-bash /tmp/hermes-install.sh
+if ! bash /tmp/hermes-install.sh; then
+  echo "---- 진단: 남은 ANDROID/TERMUX 환경변수"; env | grep -iE "android|termux|^prefix=" || echo "(없음)"
+  echo "---- 진단: /system /apex 존재"; ls -d /system /apex 2>&1
+  echo "---- 진단: uv 관리 Python"; ls ~/.local/share/uv/python 2>&1
+  exit 1
+fi
 '
 
 echo "==> proot $DISTRO 안에서 Hermes 설치"
-proot-distro login "$DISTRO" --bind "$WORKSPACE:/root/work" -- bash -lc "$GUEST_SETUP"
+# env -i: Termux/안드로이드 환경변수(ANDROID_ROOT 등)가 게스트로 새면 Hermes가 glibc Debian을
+#         Android(bionic)로 오인해 의존성 설치를 거부함 → 깨끗한 환경으로 실행
+proot-distro login "$DISTRO" --bind "$WORKSPACE:/root/work" -- /usr/bin/env -i \
+  HOME=/root TERM="${TERM:-xterm}" LANG=C.UTF-8 \
+  PATH=/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+  /bin/bash -c "$GUEST_SETUP"
 
 # Termux에서 바로 부르는 런처
 mkdir -p "$HOME/.hermes-bridge/client"
@@ -43,7 +53,7 @@ cat > "$PREFIX/bin/hermes-proot" <<EOF
 exec proot-distro login "$DISTRO" \\
   --bind "$WORKSPACE:/root/work" \\
   --bind "\$HOME/.hermes-bridge/client:/root/.hermes-bridge-client" \\
-  -- /usr/bin/env -u PREFIX -u TERMUX_VERSION -u LD_PRELOAD HOME=/root PATH="/root/.local/bin:/root/.hermes-bridge-client:/usr/local/bin:/usr/bin:/bin" \\
+  -- /usr/bin/env -i HOME=/root TERM="\${TERM:-xterm}" LANG=C.UTF-8 PATH="/root/.local/bin:/root/.hermes-bridge-client:/usr/local/bin:/usr/bin:/bin" \\
   /bin/bash -c 'cd /root/work && exec hermes "\$@"' hermes "\$@"
 EOF
 chmod 700 "$PREFIX/bin/hermes-proot"

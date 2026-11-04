@@ -38,6 +38,7 @@ jobs:
           hermes --version
           hermes config set model.provider nvidia
           hermes config set model.default "$NVIDIA_MODEL"
+          echo "TZ=Asia/Seoul" >> "$GITHUB_ENV"   # 러너(UTC)에서도 서울 기준 날짜로 실행
           if [ -n "$NVIDIA_API_KEY" ]; then
             hermes config set NVIDIA_API_KEY "$NVIDIA_API_KEY" >/dev/null
             echo "HAS_KEY=1" >> "$GITHUB_ENV"

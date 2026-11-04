@@ -32,6 +32,7 @@ PROMPT="오늘 ${CITY} 날씨를 웹에서 찾아 한국어로 브리핑해 줘.
 
 # 에이전트가 보는 '현재 시각'을 현지 시간대로 (기본은 서버 시간, 폰/서버가 UTC면 날짜가 어긋남)
 "$H" config set timezone "$TZ_NAME" >/dev/null
+"$H" config set HERMES_TIMEZONE "$TZ_NAME" >/dev/null   # .env — 런타임이 실제로 읽는 값
 
 # 같은 이름 작업이 있으면 교체
 if "$H" cron list 2>/dev/null | grep -q "$NAME"; then

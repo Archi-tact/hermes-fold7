@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # lab/redroid/e2e-test.sh — redroid(진짜 안드로이드) 위 Termux에서 키트 전체 동작을 종단 검증
 #   확인창 '예/아니오'는 호스트가 uiautomator로 화면을 읽어 직접 탭한다 (사람 대신).
-set -uo pipefail
+set -u   # pipefail 미사용: "명령 | grep -q" 판정이 SIGPIPE로 뒤집히는 것 방지
 LAB="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=lib.sh
 . "$LAB/lib.sh"
@@ -31,8 +31,9 @@ mk notif 'phone notify "Hermes lab" "e2e 알림 테스트"'
 tx_run notif "$WORK/notif.sh" 120 >/dev/null
 sleep 2
 if out notif | grep -q '"ok":true'; then
-  if AS dumpsys notification 2>/dev/null | grep -q 'com.termux'; then ok "notify → 안드로이드 알림 생성"
-  else bad "notify: 브리지는 성공했지만 알림이 보이지 않음"; AS dumpsys notification 2>/dev/null | grep -E 'NotificationRecord|pkg=' | head -10; fi
+  DN="$(AS dumpsys notification 2>/dev/null)"   # 변수로 받기: pipefail + grep -q 조기종료 → Broken pipe 오판 방지
+  if grep -q 'pkg=com.termux.api' <<<"$DN"; then ok "notify → 안드로이드 알림 생성"
+  else bad "notify: 브리지는 성공했지만 알림이 보이지 않음"; grep -E 'NotificationRecord' <<<"$DN" | head -5; fi
 else bad "notify"; out notif; fi
 mk pol 'phone help'
 tx_run pol "$WORK/pol.sh" 60 >/dev/null; out pol | grep -q 'adb-shell=deny' && ok "정책 조회" || bad "정책 조회"

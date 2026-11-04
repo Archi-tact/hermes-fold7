@@ -81,4 +81,4 @@ for n in ET.fromstring(sys.stdin.read()).iter("node"):
   done
   return 1
 }
-screen_has() { AS uiautomator dump /data/local/tmp/ui.xml >/dev/null 2>&1; AS cat /data/local/tmp/ui.xml | grep -q "$1"; }
+screen_has() { local x; AS uiautomator dump /data/local/tmp/ui.xml >/dev/null 2>&1; x="$(AS cat /data/local/tmp/ui.xml)"; grep -q "$1" <<<"$x"; }

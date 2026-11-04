@@ -53,7 +53,8 @@ else bad "확인창이 화면에 나타나지 않음 (SYSTEM_ALERT_WINDOW 확인
 
 mk cget2 'phone clipboard-get'; tx_start cget2 "$WORK/cget2.sh"
 sleep 4
-mk lockbat 'phone battery'; tx_start lockbat "$WORK/lockbat.sh"     # 확인창 대기 중 다른 요청
+# 확인창 대기 중 다른 요청 — 화면에 새 터미널을 띄우면 확인창이 가려져 취소(=거부)되므로 백그라운드로 실행
+mk lockbat 'phone battery'; TX_SHOW=0 tx_start lockbat "$WORK/lockbat.sh"
 sleep 8
 tx_done lockbat && bad "전역 잠금: 확인창 대기 중 다른 동작이 실행됨" || ok "전역 잠금: 확인창 대기 중 다른 동작 대기"
 if tap_text "$YES" 40 "confirm-dialog-yes"; then

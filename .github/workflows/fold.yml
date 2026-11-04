@@ -43,8 +43,9 @@ jobs:
           mkdir -p "$ART_DIR"
           # 러너의 내부 IP 를 'Tailscale 주소' 역할로 사용 (실폰에선 100.x.y.z)
           TS_IP="$(hostname -I | awk '{print $1}')"; echo "TS_IP=$TS_IP" >> "$GITHUB_ENV"; export TS_IP
-          bash scripts/80-hermes-fold.sh setup | tee "$RUNNER_TEMP/setup.log"
+          bash scripts/80-hermes-fold.sh setup > "$RUNNER_TEMP/setup.log"     # 비밀번호가 로그에 안 남게 파일로만
           PW="$(grep -oP '비밀번호 \K\S+' "$RUNNER_TEMP/setup.log" | head -1)"; echo "::add-mask::$PW"; echo "FOLD_PASSWORD=$PW" >> "$GITHUB_ENV"
+          sed "s/$PW/********/" "$RUNNER_TEMP/setup.log"; rm -f "$RUNNER_TEMP/setup.log"
           bash scripts/80-hermes-fold.sh start
           bash scripts/80-hermes-fold.sh remote-on | sed 's/Session token : .*/Session token : ***/'
           bash scripts/80-hermes-fold.sh status
@@ -58,9 +59,14 @@ jobs:
       - name: PC Hermes Desktop 원격 경로 (토큰)
         shell: bash
         run: |
-          HPY="$(dirname "$(readlink -f "$(command -v hermes)")")/python"
+          HB="$(readlink -f "$(command -v hermes)")"; HPY="$(dirname "$HB")/python"
+          [ -x "$HPY" ] || HPY="$(head -1 "$HB" | sed 's/^#!//; s/ .*//')"          # 런처 shebang 의 venv 파이썬
+          "$HPY" -c 'import websockets' 2>/dev/null || HPY="$(ls -d "$HOME"/.hermes/hermes-agent/venv/bin/python "$HOME"/.hermes/hermes-agent/.venv/bin/python 2>/dev/null | head -1)"
+          "$HPY" -c 'import websockets' 2>/dev/null || { python3 -m pip install -q --user websockets; HPY=python3; }
+          echo "python: $HPY"; "$HPY" -c 'import websockets; print("websockets", websockets.__version__)'
           "$HPY" lab/fold/desktop-remote.py "http://$TS_IP:9130" "$(cat "$HOME/.hermes-fold-srv/desktop.token")" | tee "$ART_DIR/desktop-result.txt"
       - name: 폰 화면 종단 테스트 (Playwright, 실제 모델)
+        if: always()
         shell: bash
         run: |
           cd lab/fold && npm init -y >/dev/null && npm i -s playwright@1.49.1 >/dev/null && npx -y playwright@1.49.1 install --with-deps chromium >/dev/null

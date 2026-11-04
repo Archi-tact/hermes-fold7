@@ -16,6 +16,11 @@ MODE="$(AS cat "$TH/.hermes-bridge/mode" 2>/dev/null || echo apt)"
 H=hermes; [ "$MODE" = proot ] && H=hermes-proot
 YES='^(Yes|YES|예|확인|OK)$'; NO='^(No|NO|아니요|아니오|취소|Cancel)$'
 AS input keyevent KEYCODE_WAKEUP; AS am start -n com.termux/.app.TermuxActivity >/dev/null
+# 관람용: 각 작업을 새 터미널 세션으로 화면에 띄우고, 전체 과정을 녹화 + 주요 장면 스크린샷
+ART="$LAB/artifacts"; mkdir -p "$ART"
+export TX_SHOW=1 SHOT_DIR="$ART/shots"
+rec_start "$ART/frames"
+trap 'rec_stop "$ART/frames"; rm -rf "$WORK"' EXIT
 
 echo "== Hermes 설치 ($MODE)"
 mk ver "$H --version"
@@ -41,7 +46,7 @@ tx_run pol "$WORK/pol.sh" 60 >/dev/null; out pol | grep -q 'adb-shell=deny' && o
 echo "== 화면 확인창 (confirm)"
 mk cset 'phone clipboard-set "lab-secret-123"'; tx_run cset "$WORK/cset.sh" 60 >/dev/null
 mk cget1 'phone clipboard-get'; tx_start cget1 "$WORK/cget1.sh"
-if tap_text "$NO" 40; then
+if tap_text "$NO" 40 "confirm-dialog-no"; then
   tx_wait cget1 90 >/dev/null; out cget1 | grep -q 'did not approve' && ! out cget1 | grep -q lab-secret \
     && ok "확인창 '아니오' → 거부, 데이터 미노출" || { bad "거부 처리"; out cget1; }
 else bad "확인창이 화면에 나타나지 않음 (SYSTEM_ALERT_WINDOW 확인)"; fi
@@ -51,7 +56,7 @@ sleep 4
 mk lockbat 'phone battery'; tx_start lockbat "$WORK/lockbat.sh"     # 확인창 대기 중 다른 요청
 sleep 8
 tx_done lockbat && bad "전역 잠금: 확인창 대기 중 다른 동작이 실행됨" || ok "전역 잠금: 확인창 대기 중 다른 동작 대기"
-if tap_text "$YES" 40; then
+if tap_text "$YES" 40 "confirm-dialog-yes"; then
   tx_wait cget2 90 >/dev/null; out cget2 | grep -q 'lab-secret-123' && ok "확인창 '예' → 실행" || { bad "승인 처리"; out cget2; }
 else bad "확인창(2) 미표시"; fi
 tx_wait lockbat 90 >/dev/null; out lockbat | grep -q '"health"' && ok "잠금 해제 후 대기 동작 완료" || { bad "잠금 해제"; out lockbat; }
@@ -60,7 +65,7 @@ echo "== 시스템 조작 (Termux의 adb → 자기 자신)"
 mk adbst 'phone adb-status'
 tx_run adbst "$WORK/adbst.sh" 120 >/dev/null; out adbst | grep -q 'device' && ok "adb-status" || { bad "adb-status"; out adbst; }
 mk shot 'phone adb-screenshot'; tx_start shot "$WORK/shot.sh"
-tap_text "$YES" 60 || true
+tap_text "$YES" 60 "screenshot-confirm" || true
 tx_wait shot 120 >/dev/null
 P="$(out shot | jq -r '.path // empty' 2>/dev/null)"
 if [ -n "$P" ] && [ "$(AS stat -c %s "$TH/work/$P" 2>/dev/null || echo 0)" -gt 1000 ]; then
@@ -73,8 +78,9 @@ echo "== 감사 로그"
 AS cat "$TH/.hermes-bridge/audit.log" | tail -12
 AS cat "$TH/.hermes-bridge/audit.log" | grep -q REJECTED && ok "감사 로그에 거부 기록" || bad "감사 로그"
 
+snap "final"
+rec_stop "$ART/frames"
 # 결과물 수집 (CI 아티팩트용)
-ART="$LAB/artifacts"; mkdir -p "$ART"
 for f in $(AS ls "$TH/.lab/" 2>/dev/null | grep '\.log$'); do A pull "$TH/.lab/$f" "$ART/$f" >/dev/null 2>&1; done
 AS cat "$TH/.hermes-bridge/audit.log" > "$ART/audit.log" 2>/dev/null
 A exec-out screencap -p > "$ART/final-screen.png" 2>/dev/null

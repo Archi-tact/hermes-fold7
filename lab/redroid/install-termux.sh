@@ -71,8 +71,9 @@ push_termux "$WORK/termux.properties" ".termux/termux.properties" 600
 cat > "$WORK/runner" <<'EOF'
 #!/data/data/com.termux/files/usr/bin/bash
 cd "$HOME"
-bash "$HOME/.lab/$1.sh" > "$HOME/.lab/$1.log" 2>&1
-echo $? > "$HOME/.lab/$1.rc"
+# 출력은 로그 파일 + 터미널 화면(포그라운드 세션일 때 보이도록) 양쪽으로
+bash "$HOME/.lab/$1.sh" 2>&1 | tee "$HOME/.lab/$1.log"
+echo "${PIPESTATUS[0]}" > "$HOME/.lab/$1.rc"
 EOF
 push_termux "$WORK/runner" ".lab/runner" 700
 AS am force-stop com.termux; sleep 1

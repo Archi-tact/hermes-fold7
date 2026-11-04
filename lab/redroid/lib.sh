@@ -40,7 +40,8 @@ tx_start() {  # tx_start <name> <script_file_on_host>
     --es com.termux.RUN_COMMAND_PATH "$TP/bin/bash"
     --esa com.termux.RUN_COMMAND_ARGUMENTS "$TH/.lab/runner,$name"
     --es com.termux.RUN_COMMAND_WORKDIR "$TH"
-    --ez com.termux.RUN_COMMAND_BACKGROUND true)
+    --ez com.termux.RUN_COMMAND_BACKGROUND "$([ "${TX_SHOW:-0}" = 1 ] && echo false || echo true)")
+  # TX_SHOW=1: 새 터미널 세션을 화면에 띄워 실행 (녹화/관람용)
   local r
   r="$(adb -s "$SERIAL" shell am start-foreground-service --user 0 "${args[@]}" 2>&1 | tr -d '\r')"
   if [[ "$r" == *Error* || "$r" == *Exception* ]]; then
@@ -64,8 +65,8 @@ tx_run() { tx_start "$1" "$2" && tx_wait "$1" "${3:-1800}"; }
 tx_done() { AS cat "$TH/.lab/$1.rc" 2>/dev/null | grep -Eq '^[0-9]+$'; }
 
 # 화면의 UI 요소를 텍스트(정규식)로 찾아 탭 — 확인창 '예/아니오' 자동 응답용
-tap_text() {  # tap_text <regex> [timeout_sec]
-  local re="$1" t="${2:-30}" i xy
+tap_text() {  # tap_text <regex> [timeout_sec] [탭 직전 스크린샷 이름]
+  local re="$1" t="${2:-30}" shot="${3:-}" i xy
   for ((i=0; i<t; i+=2)); do
     AS uiautomator dump /data/local/tmp/ui.xml >/dev/null 2>&1
     xy="$(AS cat /data/local/tmp/ui.xml | python3 -c '
@@ -76,9 +77,27 @@ for n in ET.fromstring(sys.stdin.read()).iter("node"):
         x1,y1,x2,y2=map(int,re.findall(r"\d+",n.get("bounds")))
         print((x1+x2)//2,(y1+y2)//2); break
 ' "$re" 2>/dev/null)"
-    if [ -n "$xy" ]; then AS input tap $xy; return 0; fi
+    if [ -n "$xy" ]; then
+      [ -n "$shot" ] && snap "$shot"
+      AS input tap $xy; return 0
+    fi
     sleep 2
   done
   return 1
 }
+# ---- 화면 기록 (CI 결과 페이지에서 보기용) ----
+SHOT_DIR="${SHOT_DIR:-}"; SHOT_N=0
+snap() {  # snap <이름> → $SHOT_DIR/NN-이름.png
+  [ -n "$SHOT_DIR" ] || return 0
+  SHOT_N=$((SHOT_N+1)); mkdir -p "$SHOT_DIR"
+  A exec-out screencap -p > "$SHOT_DIR/$(printf %02d "$SHOT_N")-$1.png" 2>/dev/null || true
+}
+rec_start() {  # rec_start <frames_dir> — 0.7초 간격 화면 캡처 (GIF 재료)
+  local d="$1"; mkdir -p "$d"; rm -f "$d/.stop"
+  ( n=0; while [ ! -f "$d/.stop" ]; do
+      A exec-out screencap -p > "$d/$(printf %05d $n).png" 2>/dev/null; n=$((n+1)); sleep 0.7
+    done ) &
+  REC_PID=$!
+}
+rec_stop() { [ -n "${REC_PID:-}" ] && { touch "$1/.stop"; wait "$REC_PID" 2>/dev/null; }; return 0; }
 screen_has() { local x; AS uiautomator dump /data/local/tmp/ui.xml >/dev/null 2>&1; x="$(AS cat /data/local/tmp/ui.xml)"; grep -q "$1" <<<"$x"; }

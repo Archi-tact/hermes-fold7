@@ -31,6 +31,8 @@ jobs:
   android-e2e:
     runs-on: ubuntu-24.04          # x86_64 러너에는 binder 모듈이 있음 (ARM 러너엔 없음)
     timeout-minutes: 150
+    permissions:
+      contents: write              # 화면 GIF/스크린샷을 lab-results 브랜치에 게시 (결과 페이지 표시용)
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # GitHub API 속도 제한 회피 (Termux APK 조회)
       HAS_LAB_SECRETS: ${{ secrets.LAB_SECRETS_ENV != '' }}
@@ -45,8 +47,16 @@ jobs:
         run: printf '%s\n' "$LAB_SECRETS" > lab/redroid/secrets.env
       - name: Termux 설치 + 키트 실행 (Plan B)
         run: sudo -E PLAN=proot bash lab/redroid/install-termux.sh
-      - name: E2E 테스트
-        run: sudo -E bash lab/redroid/e2e-test.sh
+      - name: E2E 테스트 (화면 녹화 포함)
+        shell: bash                # pipefail 포함 → tee가 실패를 가리지 않음
+        run: |
+          mkdir -p lab/redroid/artifacts
+          sudo -E bash lab/redroid/e2e-test.sh | tee lab/redroid/artifacts/e2e-result.txt
+      - name: 화면 GIF → 실행 결과 페이지(Summary)에 표시
+        if: always()
+        run: |
+          command -v ffmpeg >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg; }
+          sudo -E bash lab/redroid/publish-results.sh
       - name: 결과물 업로드 (스크린샷, Termux 로그, 감사 로그)
         if: always()
         uses: actions/upload-artifact@v4

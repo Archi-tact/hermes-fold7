@@ -489,6 +489,7 @@ public class HandsService extends AccessibilityService {
         int x1 = q.getInt("x1"), y1 = q.getInt("y1"), x2 = q.getInt("x2"), y2 = q.getInt("y2");
         int ms = clamp(q.optInt("ms", 400), 100, 3000);
         setStep("스와이프");
+        showHighlight(new Rect(x1 - 50, y1 - 50, x1 + 50, y1 + 50));   // 손가락이 닿을 곳을 먼저 보여줌
         Path p = new Path();
         p.moveTo(x1, y1);
         p.lineTo(x2, y2);

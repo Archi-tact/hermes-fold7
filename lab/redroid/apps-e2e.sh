@@ -2,6 +2,7 @@
 # lab/redroid/apps-e2e.sh — 실제 앱을 Hermes Hands 로 조작하는 시나리오 테스트 (+ 녹화)
 #   에이전트가 쓰는 것과 똑같은 명령(phone hands-*)만 사용: 화면 읽기 → 요소 찾기 → 누르기/입력 → 결과 확인
 #   시나리오: ① 설정 다크 모드 켜기 ② 계산기 12+34 ③ 메모 앱에 메모 쓰고 다시 열어 확인 ④ 위키백과 검색
+#             ⑤ 게임 2048 — 버튼이 아닌 직접 스와이프 조작
 #   전제: setup-server.sh, install-termux.sh(PLAN=none) 완료, Hermes Hands APK 경로 = $1
 set -u
 LAB="$(cd "$(dirname "$0")" && pwd)"
@@ -63,7 +64,7 @@ fdroid_install() {  # fdroid_install <package>
   return 1
 }
 echo "== 0. 실제 앱 설치 + Hermes Hands 연결"
-APPS=(org.fossify.math org.fossify.notes org.wikipedia)
+APPS=(org.fossify.math org.fossify.notes org.wikipedia com.uberspot.a2048)
 for p in "${APPS[@]}"; do fdroid_install "$p" && ok "앱 설치: $p" || bad "앱 설치: $p"; done
 A install -r "$APK" >/dev/null && ok "Hermes Hands 설치" || bad "Hermes Hands 설치"
 AS settings put secure enabled_accessibility_services "$PKG/$PKG.HandsService"
@@ -76,8 +77,8 @@ AS input keyevent KEYCODE_HOME
 rec_start "$ART/frames"
 trap 'rec_stop "$ART/frames"; rm -rf "$WORK"' EXIT
 
-echo "== 세션 시작 (설정·계산기·메모·위키백과만 허용, 15분)"
-ph_bg st hands-start 15 "com.android.settings,org.fossify.math,org.fossify.notes,org.wikipedia" "실제 앱 4개 조작 테스트"
+echo "== 세션 시작 (설정·계산기·메모·위키백과·2048만 허용, 15분)"
+ph_bg st hands-start 15 "com.android.settings,org.fossify.math,org.fossify.notes,org.wikipedia,com.uberspot.a2048" "실제 앱 5개 조작 테스트"
 tap_text '^(Yes|YES|예|확인|OK)$' 40 "session-confirm" || bad "세션 확인창 미표시"
 tx_wait st 60 >/dev/null; S="$(AS cat "$TH/.lab/st.log")"
 [ "$(jqv .ok "$S")" = true ] && ok "세션 승인" || { bad "세션 시작"; echo "$S"; }
@@ -148,6 +149,41 @@ if launch org.wikipedia; then
     else bad "④ 검색 입력 칸 못 찾음"; show 30; fi
   else bad "④ 검색창 못 찾음"; fi
 else bad "④ 위키백과 실행"; fi
+
+# ---------- ⑤ 게임 2048: 화면을 직접 스와이프해서 플레이 ----------
+#   버튼이 없어서 '누르기'로는 못 하는 조작 → 좌표 제스처(hands-swipe). 판이 바뀌었는지는 화면 픽셀로 확인
+board_sig() {  # 화면 가운데(판 영역) 픽셀의 해시 — 상태바 시계 변화는 제외
+  A exec-out screencap 2>/dev/null | python3 -c '
+import sys,hashlib,struct
+b=sys.stdin.buffer.read(); w,h=struct.unpack("<II",b[:8]); hdr=len(b)-w*h*4
+print(hashlib.md5(b[hdr+w*4*int(h*.30):hdr+w*4*int(h*.85)]).hexdigest())'
+}
+echo "== ⑤ 게임 2048 → 스와이프로 직접 플레이"
+if launch com.uberspot.a2048; then
+  sleep 3; dismiss; show 15
+  snap "game-start"
+  read -r SW SH < <(AS wm size | grep -oE '[0-9]+x[0-9]+' | tail -1 | tr 'x' ' ')
+  GX=$((SW/2)); GY=$((SH*57/100)); R=$((SW/4))
+  MOVED=0; SWIPES=0; prev="$(board_sig)"
+  for dir in up right down left up right down left left down; do
+    case $dir in
+      up)    a=($GX $((GY+R)) $GX $((GY-R))) ;;
+      down)  a=($GX $((GY-R)) $GX $((GY+R))) ;;
+      left)  a=($((GX+R)) $GY $((GX-R)) $GY) ;;
+      right) a=($((GX-R)) $GY $((GX+R)) $GY) ;;
+    esac
+    r="$(ph "g$((++NC))" hands-swipe "${a[@]}" 250)"
+    [ "$(jqv .ok "$r")" = true ] && SWIPES=$((SWIPES+1)) || echo "     swipe $dir → $r"
+    sleep 0.6; cur="$(board_sig)"
+    if [ -n "$cur" ] && [ "$cur" != "$prev" ]; then MOVED=$((MOVED+1)); echo "     스와이프 $dir → 판 움직임"
+    else echo "     스와이프 $dir → 변화 없음(그 방향으로 못 움직이는 판일 수 있음)"; fi
+    prev="$cur"
+  done
+  snap "game-after"
+  echo "     스와이프 성공 $SWIPES/10, 판이 바뀐 횟수 $MOVED"
+  [ $SWIPES -eq 10 ] && ok "⑤ 스와이프 제스처 10회 실행" || bad "⑤ 스와이프 실행 ($SWIPES/10)"
+  [ $MOVED -ge 5 ] && ok "⑤ 게임 판이 실제로 움직임 ($MOVED/10회)" || bad "⑤ 게임 반응 ($MOVED/10회)"
+else bad "⑤ 2048 실행"; fi
 
 echo "== 세션 종료"
 ph sp hands-stop >/dev/null; sleep 1

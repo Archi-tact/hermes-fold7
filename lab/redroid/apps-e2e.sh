@@ -71,6 +71,9 @@ AS settings put secure enabled_accessibility_services "$PKG/$PKG.HandsService"
 AS settings put secure accessibility_enabled 1
 TOKEN=""; for _ in $(seq 1 30); do TOKEN="$(AS cat /data/data/$PKG/files/token 2>/dev/null)"; [ -n "$TOKEN" ] && break; sleep 1; done
 printf '%s' "$TOKEN" > "$WORK/tok"; push_termux "$WORK/tok" ".hermes-bridge/hands.token" 600
+READY=0   # 접근성 서비스가 뜬 뒤 로컬 소켓이 열릴 때까지 대기
+for k in $(seq 1 15); do S="$(ph "w$k" hands-status)"; [ "$(jqv .ok "$S")" = true ] && { READY=1; break; }; sleep 2; done
+[ $READY = 1 ] && ok "브리지 ↔ Hermes Hands 연결" || { bad "Hermes Hands 응답 없음"; echo "$S"; }
 AS cmd uimode night no >/dev/null 2>&1
 AS input keyevent KEYCODE_HOME
 

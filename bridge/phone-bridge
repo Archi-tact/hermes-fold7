@@ -48,6 +48,7 @@ declare -A POLICY=(
   [hands-status]=allow [hands-start]=confirm [hands-stop]=allow [hands-dump]=allow
   [hands-click]=allow [hands-type]=allow [hands-scroll]=allow [hands-back]=allow [hands-home]=allow
   [hands-launch]=allow [hands-tap]=allow [hands-swipe]=allow [hands-wait]=allow
+  [hands-read]=allow [hands-run]=allow
   # 설정 직접 변경 (화면 터치 없이, 무선 디버깅 ADB 셸 권한 — MacroDroid 도우미와 같은 방식)
   #   set-<이름> 으로 항목별 정책 지정. 연결이 끊길 수 있는 항목은 기본 confirm
   [settings]=allow [set]=allow
@@ -106,7 +107,7 @@ hands() {  # hands <cmd> [jq 인자들로 만든 추가 필드 JSON]
     [ $k = 5 ] && die "Hermes Hands 앱 응답 없음 (접근성 서비스 켜짐 확인)"; sleep 1
   done
   jq -cn --arg t "$tok" --arg c "$1" --argjson x "$extra" '$x + {token:$t, cmd:$c}' >&3
-  IFS= read -r -t 90 line <&3 || line='{"ok":false,"error":"timeout"}'
+  IFS= read -r -t "${HANDS_READ_TIMEOUT:-90}" line <&3 || line='{"ok":false,"error":"timeout"}'
   exec 3>&- 3<&-
   printf '%s\n' "$line"
 }
@@ -255,6 +256,31 @@ case "$ACTION" in
                  IFS=',' read -r -a PK <<< "$(arg 1)"; for p in "${PK[@]}"; do pkg_ok "$p"; done
                  hands start "$(jq -cn --argjson m "$(arg 0)" --arg a "$(arg 1)" --arg t "$(arg 2)" '{minutes:$m, apps:($a|split(",")), title:$t}')" ;;
   hands-stop)    hands stop ;;
+  hands-read)    # 화면 구조를 '코드처럼' 짧은 들여쓰기 텍스트로: [번호] 종류 "글자" #id {click,edit,…}
+                 out="$(hands dump)"
+                 if [ "$(jq -r '.ok' <<<"$out" 2>/dev/null)" != true ]; then printf '%s\n' "$out"; exit 1; fi
+                 jq -r '"app: \(.package)  nodes: \(.count)",
+                   ((.nodes | map(.d) | min) as $m | .nodes[] |
+                    "\("  " * ([.d - $m, 12] | min))[\(.i)] \(.cls)" +
+                    (if .pw then " «password»" elif .text then " \"\(.text)\"" else "" end) +
+                    (if .desc and .desc != .text then " (\(.desc))" else "" end) +
+                    (if .id then " #\(.id | sub(".*:id/"; ""))" else "" end) +
+                    ([ (if .click then "click" else empty end), (if .edit then "edit" else empty end),
+                       (if .scroll then "scroll" else empty end), (if .checked != null then "checked=\(.checked)" else empty end) ]
+                     | if length > 0 then " {" + join(",") + "}" else "" end))' <<<"$out" ;;
+  hands-run)     # 여러 단계를 한 번에 실행: JSON 직접 / @레시피이름 (~/work/recipes/이름.json) / 작업폴더 안 .json 파일
+                 need 1 "'[{\"do\":\"click\",\"match\":\"^Display\"}, …]' | @레시피 | 파일.json"
+                 src="$(arg 0)"
+                 if [[ "$src" == @* ]]; then
+                   [[ "${src#@}" =~ ^[A-Za-z0-9_-]{1,60}$ ]] || die "레시피 이름은 영문·숫자·-_ 만"
+                   f="$WORKSPACE/recipes/${src#@}.json"; [ -f "$f" ] || die "레시피 없음: $f"; prog="$(head -c 65536 "$f")"
+                 elif [[ "$src" == *.json ]]; then
+                   f="$(realpath -m -- "$src" 2>/dev/null)"; [[ "$f" == "$(realpath -m "$WORKSPACE")"/* ]] || die "작업 폴더($WORKSPACE) 안의 파일만"
+                   [ -f "$f" ] || die "파일 없음: $src"; prog="$(head -c 65536 "$f")"
+                 else prog="$src"; fi
+                 body="$(jq -c 'if type == "array" then {steps: .} elif type == "object" and (.steps | type) == "array" then {steps: .steps} else error("형식: 단계 배열 또는 {steps:[…]}") end' <<<"$prog" 2>&1)" \
+                   || die "레시피 JSON 오류: $body"
+                 HANDS_READ_TIMEOUT=900 hands run "$body" ;;
   hands-dump)    hands dump ;;
   hands-click)   need 1 "INDEX | text:글자 | id:뷰ID"; hands click "$(node_sel "$(arg 0)")" ;;
   hands-type)    need 2 "INDEX TEXT [enter]"; int "$(arg 0)"; ent=false; [ "${ARGS[2]:-}" = enter ] && ent=true

@@ -261,6 +261,29 @@ if [ -n "$BROWSER" ] && launch "$BROWSER"; then
   else bad "⑥ 주소창 못 찾음"; fi
 else bad "⑥ 브라우저 실행"; fi
 
+# ---------- ⑧ 코드처럼 읽고 → 스크립트 한 번에 실행 → 레시피로 저장·재실행 (Aside 방식) ----------
+echo "== ⑧ hands-read + hands-run (여러 단계를 한 번에) + 레시피"
+OUT="$(ph rd1 hands-launch org.fossify.math >/dev/null; ph rd2 hands-read)"
+echo "$OUT" | head -8 | sed 's/^/     /'
+grep -q '#btn_7 {click}' <<<"$OUT" && ok "⑧ 화면을 코드처럼 읽기 (hands-read, $(wc -l <<<"$OUT")줄)" || bad "⑧ hands-read"
+cat > "$WORK/calc-mul.json" <<'J'
+[ {"do":"launch","package":"org.fossify.math"},
+  {"do":"click","match":"^(OK|Got it)$","optional":true},
+  {"do":"click","match":"btn_clear$"},
+  {"do":"click","match":"btn_7$"}, {"do":"click","match":"btn_multiply$"}, {"do":"click","match":"btn_8$"},
+  {"do":"click","match":"btn_equals$"},
+  {"do":"assert","match":"^56$"} ]
+J
+push_termux "$WORK/calc-mul.json" "work/recipes/calc-mul.json" 600
+T0=$(date +%s); R="$(ph run1 hands-run @calc-mul)"; T1=$(date +%s)
+echo "     $(grep '^{' <<<"$R" | tail -1 | jq -c '{ok,done,error}' 2>/dev/null)  (${T1}-${T0}=$((T1-T0))초)"
+[ "$(jqv .ok "$R")" = true ] && [ "$(jqv .done "$R")" = 8 ] && ok "⑧ 레시피 한 번 호출로 8단계 실행 → 7×8=56 확인 ($((T1-T0))초)" || { bad "⑧ hands-run 레시피"; echo "$R" | tail -3; }
+snap "recipe-56"
+R="$(ph run2 hands-run '[{"do":"launch","package":"org.fossify.math"},{"do":"click","match":"btn_clear$"},{"do":"assert","match":"^999$"}]')"
+[ "$(jqv .ok "$R")" = false ] && [[ "$R" == *"step 2"* ]] && ok "⑧ 확인(assert) 실패 시 그 단계에서 멈추고 보고" || { bad "⑧ assert 실패 보고"; echo "$R" | tail -2; }
+R="$(ph run3 hands-run '[{"do":"launch","package":"com.android.calculator2"}]')"
+[[ "$R" == *"not in session"* ]] && ok "⑧ 스크립트도 허용 안 된 앱은 실행 못 함" || { bad "⑧ 스크립트 범위 검사"; echo "$R" | tail -2; }
+
 # ---------- ⑦ 설정 직접 변경: 화면 터치 없이 값만 바꾸기 (phone set) ----------
 echo "== ⑦ 설정 직접 변경 (터치 없이)"
 ph sp0 hands-stop >/dev/null      # 화면 조작 세션과 무관함을 보여주려고 먼저 종료

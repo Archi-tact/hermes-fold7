@@ -51,6 +51,7 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 
 /**
  * Hermes Hands — 에이전트가 승인된 "자동화 세션" 동안에만 화면을 읽고 조작하는 접근성 서비스.
@@ -257,6 +258,7 @@ public class HandsService extends AccessibilityService {
                 case "launch": return launch(q);
                 case "tap": return tap(q);
                 case "swipe": return swipe(q);
+                case "run": return run(q);
                 case "wait": { int ms = clamp(q.optInt("ms", 1000), 0, 10_000); setStep("기다리는 중"); Thread.sleep(ms); return ok(); }
                 default: return err("unknown cmd: " + cmd);
             }
@@ -395,11 +397,92 @@ public class HandsService extends AccessibilityService {
         String id = q.optString("id", null);
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null) return null;
+        if (q.has("match") || q.optBoolean("edit", false)) {
+            Pattern pat = q.has("match") ? Pattern.compile(q.optString("match"), Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE) : null;
+            return findMatch(root, pat, q.optBoolean("edit", false), 0);
+        }
         List<AccessibilityNodeInfo> found = id != null ? root.findAccessibilityNodeInfosByViewId(id)
                 : text != null ? root.findAccessibilityNodeInfosByText(text) : null;
         if (found == null) return null;
         for (AccessibilityNodeInfo n : found) if (n.isVisibleToUser()) return n;
         return null;
+    }
+
+
+    /** 화면 트리에서 정규식(글자·설명·뷰ID)에 맞는 첫 노드. edit=true 면 입력 칸만. */
+    private AccessibilityNodeInfo findMatch(AccessibilityNodeInfo n, Pattern pat, boolean editOnly, int depth) {
+        if (n == null || depth > 80) return null;
+        if (n.isVisibleToUser() && (!editOnly || n.isEditable()) && !n.isPassword()) {
+            if (pat == null) { if (editOnly) return n; }
+            else for (CharSequence c : new CharSequence[]{n.getText(), n.getContentDescription(), n.getViewIdResourceName()})
+                if (c != null && pat.matcher(c).find()) return n;
+        }
+        for (int i = 0; i < n.getChildCount(); i++) {
+            AccessibilityNodeInfo r = findMatch(n.getChild(i), pat, editOnly, depth + 1);
+            if (r != null) return r;
+        }
+        return null;
+    }
+
+    // ───────────────────────── 스크립트 실행 (여러 단계를 한 번에) ─────────────────────────
+    //  에이전트가 '한 번 클릭 → 다시 묻기'를 반복하지 않고 단계 목록을 한 번에 보내면 앱이 순서대로 실행.
+    //  각 단계도 강조·속도·일시정지·허용 앱 검사를 그대로 거침. 실패하면 그 자리에서 멈추고 보고.
+    static final int MAX_STEPS = 60;
+
+    private JSONObject run(JSONObject q) throws Exception {
+        JSONArray steps = q.optJSONArray("steps");
+        if (steps == null || steps.length() == 0) return err("steps required");
+        if (steps.length() > MAX_STEPS) return err("too many steps (max " + MAX_STEPS + ")");
+        JSONArray report = new JSONArray();
+        for (int i = 0; i < steps.length(); i++) {
+            if (!active) return err("session ended").put("done", i).put("report", report);
+            if (paused && !waitWhilePaused(25_000)) return err("paused").put("paused", true).put("done", i).put("report", report);
+            lastRequest = System.currentTimeMillis();                 // 긴 스크립트 중 '유휴 종료' 방지
+            JSONObject st = steps.getJSONObject(i);
+            String op = st.optString("do");
+            JSONObject r;
+            try { r = runStep(op, st); } catch (Exception e) { r = err(op + ": " + e.getClass().getSimpleName()); }
+            report.put(new JSONObject().put("step", i).put("do", op).put("ok", r.optBoolean("ok")).put("info", r.has("error") ? r.optString("error") : r.optString("clicked", "")));
+            if (!r.optBoolean("ok")) {
+                if (st.optBoolean("optional", false)) continue;          // 있으면 누르고 없으면 넘어가는 단계 (팝업 닫기 등)
+                return err("step " + i + " (" + op + ") failed: " + r.optString("error")).put("done", i).put("report", report);
+            }
+        }
+        return ok().put("done", steps.length()).put("report", report);
+    }
+
+    private JSONObject runStep(String op, JSONObject st) throws Exception {
+        switch (op) {
+            case "click": {
+                int tries = clamp(st.optInt("scroll", 0), 0, 10);
+                for (int k = 0; ; k++) {
+                    JSONObject r = click(st);
+                    if (r.optBoolean("ok") || k >= tries) return r;
+                    scroll(new JSONObject().put("dir", "down"));
+                }
+            }
+            case "type": return type(st.has("match") || st.has("i") || st.has("id") || st.has("text") ? st : new JSONObject(st.toString()).put("edit", true));
+            case "scroll": return scroll(st);
+            case "back": return global(GLOBAL_ACTION_BACK, "뒤로");
+            case "home": return global(GLOBAL_ACTION_HOME, "홈");
+            case "launch": return launch(st);
+            case "tap": return tap(st);
+            case "swipe": return swipe(st);
+            case "wait": { Thread.sleep(clamp(st.optInt("ms", 1000), 0, 10_000)); return ok(); }
+            case "wait_for": case "assert": {
+                long until = System.currentTimeMillis() + ("assert".equals(op) ? 0 : clamp(st.optInt("ms", 8000), 0, 30_000));
+                setStep(("assert".equals(op) ? "확인: " : "기다림: ") + st.optString("match"));
+                do {
+                    AccessibilityNodeInfo root = getRootInActiveWindow();
+                    Pattern pat = Pattern.compile(st.optString("match"), Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+                    AccessibilityNodeInfo n = findMatch(root, pat, false, 0);
+                    if (n != null) return ok().put("clicked", label(n));
+                    Thread.sleep(400);
+                } while (System.currentTimeMillis() < until);
+                return err("not found: " + st.optString("match"));
+            }
+            default: return err("unknown step: " + op);
+        }
     }
 
     private JSONObject click(JSONObject q) throws Exception {

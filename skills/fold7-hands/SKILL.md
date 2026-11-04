@@ -32,7 +32,63 @@ shows a blue frame over the screen during a session, blocks the user's touches e
 5. Never type passwords, OTPs or card numbers. Password fields are hidden (`"pw": true`) and refused.
    Ask the user to enter them during a pause.
 
-## Read → act → verify loop
+## Choose the cheapest way first
+
+1. **No screen at all** — a setting? use `phone set …` (see fold7-phone). A web page's data? use web search/fetch.
+2. **A saved recipe** — `ls ~/work/recipes/` ; if one fits, `phone hands-run @name`.
+3. **Read the screen as code, then run a script** — `phone hands-read`, write the whole flow as steps, `phone hands-run '<json>'`.
+4. **Step by step** (below) only when you can't predict the next screen.
+
+## Read the screen as code (`hands-read`)
+
+```
+$ phone hands-read
+app: org.fossify.math  nodes: 24
+[0] TextView "0" #result
+  [16] TextView "1" #btn_1 {click}
+  [19] TextView "+" #btn_plus {click}
+```
+Indented outline: `[i] class "text" (description) #view-id {click,edit,scroll,checked=…}`. Much shorter than `hands-dump`;
+use `hands-dump` only when you need bounds (`b`) for tap/swipe coordinates.
+
+## Run many steps at once (`hands-run`)
+
+Send the whole flow; the app runs it at the same visible speed (highlight → act → pause), stops at the first failed
+step and returns a per-step `report`. Selectors use `match` = regex over text / description / view id.
+
+```
+phone hands-run '[
+  {"do":"launch","package":"org.fossify.math"},
+  {"do":"click","match":"^(OK|Got it)$","optional":true},
+  {"do":"click","match":"^C$"},
+  {"do":"click","match":"btn_7$"}, {"do":"click","match":"^×$"}, {"do":"click","match":"btn_8$"},
+  {"do":"click","match":"^=$"},
+  {"do":"assert","match":"^56$"}
+]'
+```
+
+| do | fields | |
+|---|---|---|
+| `launch` | `package` | app must be in the session |
+| `click` | `match` (or `i`/`id`/`text`), `scroll`: N | `scroll` = scroll down up to N times looking for it |
+| `type` | `value`, `enter`: true, optional `match` | no `match` = first input box |
+| `scroll` | `dir`: down/up | |
+| `back`, `home` | | |
+| `wait` | `ms` ≤ 10000 | |
+| `wait_for` | `match`, `ms` ≤ 30000 | wait until it appears (page load) |
+| `assert` | `match` | fail the run if not on screen — end every script with one |
+| `tap`, `swipe` | `x`,`y` / `x1`,`y1`,`x2`,`y2`,`ms` | last resort |
+
+Any step can have `"optional": true` (skip if it fails — e.g. closing a popup that may not appear). Max 60 steps.
+If the result says `paused`, the user pressed ⏸ — poll `hands-status` and resume from `done`.
+
+## Save working flows as recipes
+
+When a `hands-run` succeeds, save the same JSON to `~/work/recipes/<name>.json` (letters, digits, `-`, `_`) and
+mention it in memory. Next time run `phone hands-run @<name>`. Recipes use text/id regexes, never coordinates, so
+they survive layout changes; if one fails, read the screen, fix the step, and overwrite the recipe.
+
+## Read → act → verify loop (step by step)
 
 ```
 phone hands-launch com.android.settings      # open an approved app

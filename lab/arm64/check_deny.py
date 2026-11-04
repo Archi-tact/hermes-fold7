@@ -29,6 +29,8 @@ MUST_ALLOW = [
     "phone hands-click 3",
     "phone set dark on",
     "phone settings",
+    "phone hands-read",
+    "phone hands-run @calc",
 ]
 fail = 0
 for cmd in MUST_BLOCK:

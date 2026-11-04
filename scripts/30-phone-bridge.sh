@@ -12,6 +12,9 @@ pkg install -y openssh jq termux-api coreutils
 
 install -m 700 "$HERE/bridge/phone-bridge" "$BH/phone-bridge"
 install -m 755 "$HERE/bridge/phone" "$PREFIX/bin/phone"       # Plan A: Termux에서 바로 사용
+# Termux에는 /usr/bin/env가 없음. 대화형 셸에선 termux-exec가 우회해주지만
+# Termux:Boot·RUN_COMMAND·크론 같은 자동 실행에선 실패하므로 shebang을 Termux 경로로 고정
+sed -i "1s|^#!/usr/bin/env bash|#!$PREFIX/bin/bash|" "$PREFIX/bin/phone"
 install -m 755 "$HERE/bridge/phone" "$BH/client/phone"         # Plan B: proot 게스트 PATH에 노출
 [ -f "$BH/policy.conf" ] || install -m 600 "$HERE/bridge/policy.conf.example" "$BH/policy.conf"
 

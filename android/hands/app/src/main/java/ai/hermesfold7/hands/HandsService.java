@@ -540,6 +540,7 @@ public class HandsService extends AccessibilityService {
     /** 좌표 제스처는 보호막을 잠깐 '통과' 상태로 바꾼 뒤 실행하고 즉시 되돌림. */
     private boolean gesture(GestureDescription.StrokeDescription stroke, long timeoutMs) throws InterruptedException {
         runOnMain(() -> setOverlayTouchable(false));
+        Thread.sleep(200);   // 창 관리자가 '통과' 플래그를 입력 시스템에 반영할 때까지 대기 (안 하면 제스처가 보호막에 막힘)
         final boolean[] result = {false};
         final CountDownLatch done = new CountDownLatch(1);
         GestureDescription g = new GestureDescription.Builder().addStroke(stroke).build();

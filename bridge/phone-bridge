@@ -111,6 +111,9 @@ adb_ready() {
     adb devices 2>/dev/null | awk 'NR>1 && $2=="device"{f=1} END{exit !f}' \
       || die "ADB 미연결: 설정>개발자 옵션>무선 디버깅 ON 후 scripts/40-adb-pair.sh 실행"
   fi
+  # 같은 폰이 mDNS 이름과 IP:포트로 두 번 잡히면 "more than one device" → 첫 기기로 고정
+  ANDROID_SERIAL="$(adb devices 2>/dev/null | awk 'NR>1 && $2=="device"{print $1; exit}')"
+  export ANDROID_SERIAL
 }
 adb_done() { [ "$ADB_KILL_AFTER" = 1 ] && adb kill-server >/dev/null 2>&1; true; }
 A() { adb shell -- "$@"; }   # 인자 배열 그대로 전달 (adb가 원격에서 공백 결합하므로 값 검증 필수)

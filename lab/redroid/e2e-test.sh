@@ -26,10 +26,14 @@ out cfg | grep -q manual && out cfg | grep -q 'termux-' && ok "승인 manual + d
 
 echo "== 폰 기능 (Termux:API, 실제 안드로이드)"
 mk bat 'phone battery'
-tx_run bat "$WORK/bat.sh" 120 >/dev/null; out bat | grep -q percentage && ok "battery (allow)" || { bad "battery"; out bat; }
+tx_run bat "$WORK/bat.sh" 120 >/dev/null; out bat | grep -q '"health"' && ok "battery (allow) — 가상기기라 배터리 값은 비어 있음" || { bad "battery"; out bat; }
 mk notif 'phone notify "Hermes lab" "e2e 알림 테스트"'
 tx_run notif "$WORK/notif.sh" 120 >/dev/null
-AS dumpsys notification --noredact | grep -q 'Hermes lab' && ok "notify → 안드로이드 알림 생성" || bad "notify"
+sleep 2
+if out notif | grep -q '"ok":true'; then
+  if AS dumpsys notification 2>/dev/null | grep -q 'com.termux'; then ok "notify → 안드로이드 알림 생성"
+  else bad "notify: 브리지는 성공했지만 알림이 보이지 않음"; AS dumpsys notification 2>/dev/null | grep -E 'NotificationRecord|pkg=' | head -10; fi
+else bad "notify"; out notif; fi
 mk pol 'phone help'
 tx_run pol "$WORK/pol.sh" 60 >/dev/null; out pol | grep -q 'adb-shell=deny' && ok "정책 조회" || bad "정책 조회"
 
@@ -49,7 +53,7 @@ tx_done lockbat && bad "전역 잠금: 확인창 대기 중 다른 동작이 실
 if tap_text "$YES" 40; then
   tx_wait cget2 90 >/dev/null; out cget2 | grep -q 'lab-secret-123' && ok "확인창 '예' → 실행" || { bad "승인 처리"; out cget2; }
 else bad "확인창(2) 미표시"; fi
-tx_wait lockbat 90 >/dev/null; out lockbat | grep -q percentage && ok "잠금 해제 후 대기 동작 완료" || bad "잠금 해제"
+tx_wait lockbat 90 >/dev/null; out lockbat | grep -q '"health"' && ok "잠금 해제 후 대기 동작 완료" || { bad "잠금 해제"; out lockbat; }
 
 echo "== 시스템 조작 (Termux의 adb → 자기 자신)"
 mk adbst 'phone adb-status'

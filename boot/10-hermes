@@ -1,0 +1,20 @@
+#!/data/data/com.termux/files/usr/bin/sh
+# Termux:Boot 자동시작 스크립트 → ~/.termux/boot/10-hermes 에 설치됨
+# 폰 부팅 시: 화면꺼짐 방지 잠금 → 로컬 sshd(브리지) → (설정돼 있으면) 메신저 게이트웨이
+termux-wake-lock
+sshd
+
+MODE_FILE="$HOME/.hermes-bridge/mode"         # apt | proot
+MODE="$(cat "$MODE_FILE" 2>/dev/null || echo apt)"
+LOG_DIR="$HOME/.hermes-bridge/logs"; mkdir -p "$LOG_DIR"
+
+# 게이트웨이는 사용자가 명시적으로 켰을 때만 (touch ~/.hermes-bridge/gateway.enabled)
+[ -f "$HOME/.hermes-bridge/gateway.enabled" ] || exit 0
+
+if [ "$MODE" = proot ]; then
+  nohup hermes-proot gateway run >> "$LOG_DIR/gateway.log" 2>&1 &
+else
+  nohup hermes gateway run >> "$LOG_DIR/gateway.log" 2>&1 &
+fi
+termux-notification --id hermes-gw --ongoing --title "Hermes" --content "게이트웨이 실행 중 ($MODE)" \
+  --button1 "중지" --button1-action "pkill -f 'gateway run'; termux-notification-remove hermes-gw"

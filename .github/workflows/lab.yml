@@ -1,0 +1,58 @@
+# 온라인 테스트 공간 — GitHub Actions (서버 없이, push/수동 실행마다 자동 검증)
+#   arm64-lab : 폴드7과 같은 ARM64에서 Hermes 설치 + 보안 설정 + 차단 규칙 + 폰 브리지 SSH 보안
+#   android-e2e: GitHub 러너 위에 진짜 안드로이드(redroid, x86_64) → Termux 3종 → 키트(Plan B) → E2E
+name: lab
+on:
+  workflow_dispatch:
+  push:
+    paths: ["scripts/**", "bridge/**", "skills/**", "lab/**", ".github/workflows/lab.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  arm64-lab:
+    # 공개 저장소: 무료 ARM64 러너(네이티브). 비공개: x86 러너 + qemu 에뮬레이션
+    runs-on: ${{ github.event.repository.private && 'ubuntu-24.04' || 'ubuntu-24.04-arm' }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: QEMU (x86 러너일 때만)
+        if: runner.arch != 'ARM64'
+        uses: docker/setup-qemu-action@v3
+        with: { platforms: arm64 }
+      - name: 폰 브리지 SSH 보안 테스트
+        run: bash lab/arm64/run-bridge-ssh-test.sh
+      - name: Hermes 소스 (최신 main)
+        run: git clone --depth 1 https://github.com/NousResearch/hermes-agent "$RUNNER_TEMP/hermes-agent"
+      - name: Hermes ARM64 설치 + 하드닝 + 차단 규칙 + 스킬 인식
+        run: HERMES_SRC="$RUNNER_TEMP/hermes-agent" bash lab/arm64/run-hermes-arm64.sh
+
+  android-e2e:
+    runs-on: ubuntu-24.04          # x86_64 러너에는 binder 모듈이 있음 (ARM 러너엔 없음)
+    timeout-minutes: 150
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # GitHub API 속도 제한 회피 (Termux APK 조회)
+      HAS_LAB_SECRETS: ${{ secrets.LAB_SECRETS_ENV != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: redroid 안드로이드 기동
+        run: sudo -E LAB_CI=1 REDROID_W=1080 REDROID_H=1920 REDROID_DPI=420 bash lab/redroid/setup-server.sh
+      - name: (선택) API 키
+        if: env.HAS_LAB_SECRETS == 'true'
+        env: { LAB_SECRETS: "${{ secrets.LAB_SECRETS_ENV }}" }
+        run: printf '%s\n' "$LAB_SECRETS" > lab/redroid/secrets.env
+      - name: Termux 설치 + 키트 실행 (Plan B)
+        run: sudo -E PLAN=proot bash lab/redroid/install-termux.sh
+      - name: E2E 테스트
+        run: sudo -E bash lab/redroid/e2e-test.sh
+      - name: 결과물 업로드 (스크린샷, Termux 로그, 감사 로그)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-e2e
+          path: lab/redroid/artifacts/
+          if-no-files-found: ignore
+      - name: 비밀 파일 정리
+        if: always()
+        run: rm -f lab/redroid/secrets.env

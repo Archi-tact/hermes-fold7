@@ -1,0 +1,32 @@
+# ~/.hermes-bridge/policy.conf — 폰 브리지 동작별 정책
+#   allow   : 바로 실행
+#   confirm : 폰 화면에 확인창 → 직접 '예'를 눌러야 실행 (60초 무응답 = 거부)
+#   deny    : 항상 거부
+# 여기 없는 키는 phone-bridge 안의 기본값을 따릅니다. `phone help`로 현재 정책 확인.
+#
+# ⚠ adb-tap / adb-swipe / adb-key 를 allow 로 바꾸면 에이전트가 화면을 자유롭게 조작합니다.
+#   (확인창은 전역 잠금으로 보호되지만, 은행/인증 앱 등 다른 앱 조작까지 막지는 못합니다)
+
+battery=allow
+notify=allow
+toast=allow
+vibrate=allow
+tts=allow
+clipboard-get=confirm
+location=confirm
+camera-photo=confirm
+contacts=confirm
+sms-list=confirm
+sms-send=confirm
+call=confirm
+
+adb-status=allow
+adb-packages=allow
+adb-screenshot=confirm
+adb-ui-dump=confirm
+adb-launch=confirm
+adb-tap=confirm
+adb-swipe=confirm
+adb-text=confirm
+adb-key=confirm
+adb-shell=deny

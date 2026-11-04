@@ -1,0 +1,154 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# phone-bridge — Hermes 에이전트용 '폰 기능' 게이트웨이 (Termux 쪽에서 실행)
+#
+# 호출 방식
+#   - Plan B(proot): SSH 강제명령(authorized_keys의 command=)으로만 실행됨.
+#                    요청은 $SSH_ORIGINAL_COMMAND 에 "base64(인자1) base64(인자2) ..." 형태.
+#   - Plan A(Termux 네이티브): `phone` 클라이언트가 같은 형식으로 직접 실행.
+#
+# 보안 원칙
+#   1) 허용목록(allowlist)에 있는 동작만 실행. 임의 쉘 실행 없음(eval/sh -c 미사용).
+#   2) 동작별 정책: allow | confirm | deny  (~/.hermes-bridge/policy.conf 로 조정)
+#   3) confirm 동작은 '폰 화면'에 확인창(termux-dialog)을 띄움 → 사람이 직접 눌러야 실행.
+#   4) 전역 직렬 잠금: 확인창이 떠 있는 동안 다른 동작(예: adb-tap)이 실행될 수 없음
+#      → 에이전트가 스스로 확인창을 누르는 것을 방지.
+#   5) 모든 요청/결과를 audit.log 에 기록.
+set -uo pipefail
+set -f            # 글롭 확장 금지
+umask 077
+
+BRIDGE_HOME="${HERMES_BRIDGE_HOME:-$HOME/.hermes-bridge}"
+POLICY_FILE="$BRIDGE_HOME/policy.conf"
+AUDIT_LOG="$BRIDGE_HOME/audit.log"
+LOCK_DIR="$BRIDGE_HOME/.lock"
+WORKSPACE="${HERMES_WORKSPACE:-$HOME/work}"
+OUT_DIR="$WORKSPACE/.phone"
+CONFIRM_TIMEOUT="${BRIDGE_CONFIRM_TIMEOUT:-60}"
+ADB_KILL_AFTER="${BRIDGE_ADB_KILL_AFTER:-1}"   # 1이면 adb 동작 후 adb 서버 종료(다른 프로세스의 adb 재사용 차단)
+MAX_ARG_LEN=4000
+
+mkdir -p "$BRIDGE_HOME" "$OUT_DIR"
+
+die()   { printf '{"ok":false,"error":%s}\n' "$(json_str "$1")"; audit "DENY/ERR" "$1"; exit "${2:-1}"; }
+json_str() { jq -Rn --arg s "$1" '$s'; }
+audit() { printf '%s\t%s\t%s\t%s\n' "$(date -Is)" "${SSH_CLIENT:-local}" "$1" "$2" >> "$AUDIT_LOG"; }
+
+# ---------- 기본 정책 (policy.conf 가 덮어씀) ----------
+declare -A POLICY=(
+  [help]=allow [battery]=allow [notify]=allow [toast]=allow [vibrate]=allow
+  [tts]=allow [torch]=allow [volume]=allow [brightness]=allow [wifi-info]=allow
+  [clipboard-get]=confirm [clipboard-set]=allow [open-url]=confirm [share]=confirm
+  [location]=confirm [camera-photo]=confirm [contacts]=confirm
+  [sms-list]=confirm [sms-send]=confirm [call]=confirm
+  [adb-status]=allow [adb-packages]=allow [adb-launch]=confirm
+  [adb-screenshot]=confirm [adb-ui-dump]=confirm
+  [adb-tap]=confirm [adb-swipe]=confirm [adb-text]=confirm [adb-key]=confirm
+  [adb-setting-get]=allow [adb-shell]=deny
+)
+if [ -f "$POLICY_FILE" ]; then
+  while IFS='=' read -r k v; do
+    k="${k//[[:space:]]/}"; v="${v//[[:space:]]/}"
+    [[ -z "$k" || "$k" == \#* ]] && continue
+    [[ -n "${POLICY[$k]+x}" && "$v" =~ ^(allow|confirm|deny)$ ]] && POLICY[$k]="$v"
+  done < "$POLICY_FILE"
+fi
+
+# ---------- 요청 파싱 ----------
+RAW="${SSH_ORIGINAL_COMMAND:-${PHONE_BRIDGE_REQUEST:-}}"
+[ -z "$RAW" ] && die "empty request"
+ARGS=()
+for tok in $RAW; do                      # 토큰은 base64라 공백/메타문자 없음
+  [[ "$tok" =~ ^[A-Za-z0-9+/=]+$ ]] || die "malformed token"
+  dec="$(printf '%s' "$tok" | base64 -d 2>/dev/null)" || die "bad base64"
+  [ "${#dec}" -le "$MAX_ARG_LEN" ] || die "argument too long"
+  ARGS+=("$dec")
+done
+ACTION="${ARGS[0]}"; ARGS=("${ARGS[@]:1}")
+[[ -n "${POLICY[$ACTION]+x}" ]] || die "unknown action: $ACTION (phone help 참고)"
+MODE="${POLICY[$ACTION]}"
+[ "$MODE" = deny ] && die "action '$ACTION' is denied by policy"
+
+arg()  { printf '%s' "${ARGS[$1]:-}"; }
+need() { [ "${#ARGS[@]}" -ge "$1" ] || die "usage: $ACTION $2"; }
+int()  { [[ "$1" =~ ^-?[0-9]+$ ]] || die "integer expected: $1"; }
+
+# ---------- 전역 직렬 잠금 ----------
+got_lock=0
+for _ in $(seq 1 $((CONFIRM_TIMEOUT + 30))); do
+  if mkdir "$LOCK_DIR" 2>/dev/null; then got_lock=1; break; fi
+  # 죽은 프로세스가 남긴 잠금 정리
+  holder="$(cat "$LOCK_DIR/pid" 2>/dev/null || true)"
+  if [ -n "$holder" ] && ! kill -0 "$holder" 2>/dev/null; then rm -rf "$LOCK_DIR"; continue; fi
+  sleep 1
+done
+[ "$got_lock" = 1 ] || die "bridge busy"
+echo $$ > "$LOCK_DIR/pid"
+trap 'rm -rf "$LOCK_DIR"' EXIT
+
+# ---------- 사람 확인 ----------
+confirm() {
+  local summary="$1" res
+  res="$(timeout "$CONFIRM_TIMEOUT" termux-dialog confirm -t "Hermes 요청 승인" -i "$summary" 2>/dev/null)" || true
+  if [ "$(printf '%s' "$res" | jq -r '.text // empty' 2>/dev/null)" != "yes" ]; then
+    audit "REJECTED" "$summary"
+    die "user did not approve on phone screen"
+  fi
+  audit "APPROVED" "$summary"
+}
+SUMMARY="$ACTION"; for a in "${ARGS[@]}"; do SUMMARY+=" «${a//$'\n'/⏎}»"; done
+[ "$MODE" = confirm ] && confirm "$SUMMARY"
+audit "RUN" "$SUMMARY"
+
+# ---------- ADB 헬퍼 (무선 디버깅으로 자기 자신에 연결) ----------
+adb_ready() {
+  command -v adb >/dev/null || die "android-tools 미설치 (pkg install android-tools)"
+  if ! adb devices 2>/dev/null | awk 'NR>1 && $2=="device"{f=1} END{exit !f}'; then
+    local ep
+    ep="$(adb mdns services 2>/dev/null | awk '/_adb-tls-connect/{print $NF; exit}')"
+    # mDNS로 못 찾으면 고정 엔드포인트 파일 사용 (테스트 서버/redroid 등)
+    [ -z "$ep" ] && [ -f "$BRIDGE_HOME/adb-endpoint" ] && ep="$(head -1 "$BRIDGE_HOME/adb-endpoint")"
+    [[ -n "$ep" && "$ep" =~ ^[A-Za-z0-9.:-]+$ ]] && adb connect "$ep" >/dev/null 2>&1
+    adb devices 2>/dev/null | awk 'NR>1 && $2=="device"{f=1} END{exit !f}' \
+      || die "ADB 미연결: 설정>개발자 옵션>무선 디버깅 ON 후 scripts/40-adb-pair.sh 실행"
+  fi
+}
+adb_done() { [ "$ADB_KILL_AFTER" = 1 ] && adb kill-server >/dev/null 2>&1; true; }
+A() { adb shell -- "$@"; }   # 인자 배열 그대로 전달 (adb가 원격에서 공백 결합하므로 값 검증 필수)
+safe_word() { [[ "$1" =~ ^[A-Za-z0-9._:/-]+$ ]] || die "unsafe value: $1"; }
+
+ts="$(date +%Y%m%d-%H%M%S)"
+case "$ACTION" in
+  help)          printf '%s\n' "${!POLICY[@]}" | sort | while read -r k; do echo "$k=${POLICY[$k]}"; done ;;
+  battery)       termux-battery-status ;;
+  notify)        need 2 "TITLE TEXT"; termux-notification --title "$(arg 0)" --content "$(arg 1)" && echo '{"ok":true}' ;;
+  toast)         need 1 "TEXT"; termux-toast "$(arg 0)" && echo '{"ok":true}' ;;
+  vibrate)       termux-vibrate -d 400 && echo '{"ok":true}' ;;
+  tts)           need 1 "TEXT"; termux-tts-speak "$(arg 0)" && echo '{"ok":true}' ;;
+  torch)         need 1 "on|off"; [[ "$(arg 0)" =~ ^(on|off)$ ]] || die "on|off"; termux-torch "$(arg 0)" && echo '{"ok":true}' ;;
+  volume)        if [ "${#ARGS[@]}" -eq 0 ]; then termux-volume; else need 2 "STREAM LEVEL"; safe_word "$(arg 0)"; int "$(arg 1)"; termux-volume "$(arg 0)" "$(arg 1)"; fi ;;
+  brightness)    need 1 "0-255|auto"; [[ "$(arg 0)" =~ ^([0-9]{1,3}|auto)$ ]] || die "0-255|auto"; termux-brightness "$(arg 0)" && echo '{"ok":true}' ;;
+  wifi-info)     termux-wifi-connectioninfo ;;
+  clipboard-get) termux-clipboard-get ;;
+  clipboard-set) need 1 "TEXT"; printf '%s' "$(arg 0)" | termux-clipboard-set && echo '{"ok":true}' ;;
+  open-url)      need 1 "URL"; [[ "$(arg 0)" =~ ^https?:// ]] || die "http(s) URL only"; termux-open-url "$(arg 0)" && echo '{"ok":true}' ;;
+  share)         need 1 "FILE(작업폴더 내부)"; f="$(realpath -m "$WORKSPACE/$(arg 0)")"; [[ "$f" == "$WORKSPACE"/* && -f "$f" ]] || die "file must be inside workspace"; termux-share "$f" && echo '{"ok":true}' ;;
+  location)      termux-location -p network -r once ;;
+  camera-photo)  f="$OUT_DIR/photo-$ts.jpg"; cam="${ARGS[0]:-0}"; int "$cam"; termux-camera-photo -c "$cam" "$f" && jq -n --arg p "${f#"$WORKSPACE"/}" '{ok:true,path:$p}' ;;
+  contacts)      termux-contact-list ;;
+  sms-list)      n="${ARGS[0]:-20}"; int "$n"; termux-sms-list -l "$n" ;;
+  sms-send)      need 2 "NUMBER TEXT"; [[ "$(arg 0)" =~ ^\+?[0-9-]{3,20}$ ]] || die "bad number"; termux-sms-send -n "$(arg 0)" "$(arg 1)" && echo '{"ok":true}' ;;
+  call)          need 1 "NUMBER"; [[ "$(arg 0)" =~ ^\+?[0-9-]{3,20}$ ]] || die "bad number"; termux-telephony-call "$(arg 0)" && echo '{"ok":true}' ;;
+
+  adb-status)    adb_ready; adb devices -l; adb_done ;;
+  adb-packages)  adb_ready; A pm list packages -3; adb_done ;;
+  adb-launch)    need 1 "PACKAGE"; safe_word "$(arg 0)"; adb_ready; A monkey -p "$(arg 0)" -c android.intent.category.LAUNCHER 1 >/dev/null && echo '{"ok":true}'; adb_done ;;
+  adb-screenshot) adb_ready; f="$OUT_DIR/screen-$ts.png"; adb exec-out screencap -p > "$f" && jq -n --arg p "${f#"$WORKSPACE"/}" '{ok:true,path:$p}'; adb_done ;;
+  adb-ui-dump)   adb_ready; f="$OUT_DIR/ui-$ts.xml"; A uiautomator dump /sdcard/.hermes-ui.xml >/dev/null && adb exec-out cat /sdcard/.hermes-ui.xml > "$f" && A rm -f /sdcard/.hermes-ui.xml && jq -n --arg p "${f#"$WORKSPACE"/}" '{ok:true,path:$p}'; adb_done ;;
+  adb-tap)       need 2 "X Y"; int "$(arg 0)"; int "$(arg 1)"; adb_ready; A input tap "$(arg 0)" "$(arg 1)" && echo '{"ok":true}'; adb_done ;;
+  adb-swipe)     need 4 "X1 Y1 X2 Y2 [MS]"; for i in 0 1 2 3; do int "$(arg $i)"; done; ms="${ARGS[4]:-300}"; int "$ms"; adb_ready; A input swipe "$(arg 0)" "$(arg 1)" "$(arg 2)" "$(arg 3)" "$ms" && echo '{"ok":true}'; adb_done ;;
+  adb-text)      need 1 "TEXT(영문/숫자/기본기호)"; [[ "$(arg 0)" =~ ^[A-Za-z0-9\ ._@:/-]+$ ]] || die "adb-text: 한글/특수문자는 clipboard-set 후 붙여넣기 사용"; adb_ready; t="$(arg 0)"; A input text "${t// /%s}" && echo '{"ok":true}'; adb_done ;;
+  adb-key)       need 1 "KEYCODE(예: KEYCODE_HOME)"; [[ "$(arg 0)" =~ ^(KEYCODE_[A-Z0-9_]+|[0-9]{1,3})$ ]] || die "bad keycode"; adb_ready; A input keyevent "$(arg 0)" && echo '{"ok":true}'; adb_done ;;
+  adb-setting-get) need 2 "system|secure|global KEY"; [[ "$(arg 0)" =~ ^(system|secure|global)$ ]] || die "namespace"; safe_word "$(arg 1)"; adb_ready; A settings get "$(arg 0)" "$(arg 1)"; adb_done ;;
+  adb-shell)     need 1 "COMMAND..."; adb_ready; A "${ARGS[@]}"; rc=$?; adb_done; exit $rc ;;
+  *)             die "not implemented: $ACTION" ;;
+esac

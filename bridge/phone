@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# phone — Hermes 에이전트가 쓰는 폰 기능 클라이언트
+#   사용: phone <action> [args...]      예) phone battery / phone notify "제목" "내용"
+#   Termux 안(Plan A): 브리지를 직접 실행
+#   proot 안(Plan B):  SSH(127.0.0.1:8022, 전용 키, 강제명령)로 브리지 호출
+set -euo pipefail
+[ $# -ge 1 ] || set -- help
+
+enc() { printf '%s' "$1" | base64 | tr -d '\n'; }
+REQ=""
+for a in "$@"; do REQ+="$(enc "$a") "; done
+REQ="${REQ% }"
+
+BRIDGE="/data/data/com.termux/files/home/.hermes-bridge/phone-bridge"
+if [ "${PREFIX:-}" = "/data/data/com.termux/files/usr" ] && [ -x "$BRIDGE" ]; then
+  PHONE_BRIDGE_REQUEST="$REQ" SSH_ORIGINAL_COMMAND="" exec "$BRIDGE"
+fi
+
+KEY_DIR="${PHONE_BRIDGE_KEY_DIR:-/root/.hermes-bridge-client}"
+exec ssh -q -T -p "${PHONE_BRIDGE_PORT:-8022}" \
+  -i "$KEY_DIR/id_ed25519" \
+  -o IdentitiesOnly=yes -o BatchMode=yes \
+  -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KEY_DIR/known_hosts" \
+  "${PHONE_BRIDGE_USER:+$PHONE_BRIDGE_USER@}127.0.0.1" "$REQ"   # Termux sshd는 사용자명을 무시함

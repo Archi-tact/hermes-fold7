@@ -58,12 +58,31 @@ scrypt_hash() {  # Hermes basic_auth 와 같은 형식: scrypt$N$r$p$salt_b64$dk
   printf 'scrypt$16384$8$1$%s$%s' "$sb" "$dk"
 }
 
+# proot-distro 는 명령 인자를 셸로 다시 해석할 수 있어 '$' 가 든 값(비밀번호 해시)이 깨짐 → 스크립트를 stdin 으로 전달
+guest_sh() { G /bin/sh -s; }
+set_secret_value() {  # set_secret_value 키 값
+  if [ "$MODE" = proot ]; then
+    printf 'PATH=/root/.local/bin:/usr/local/bin:/usr/bin:/bin\ncd /root\nhermes config set %s "$(cat <<'"'"'__HV__'"'"'\n%s\n__HV__\n)" >/dev/null\n' "$1" "$2" | guest_sh
+  else
+    $HC config set "$1" "$2" >/dev/null
+  fi
+}
+get_value() {
+  if [ "$MODE" = proot ]; then printf 'PATH=/root/.local/bin:/usr/local/bin:/usr/bin:/bin\ncd /root\nhermes config get %s\n' "$1" | guest_sh 2>/dev/null
+  else $HC config get "$1" 2>/dev/null; fi
+}
+
 new_password() {
   need openssl openssl-tool
-  local pw; pw="$(openssl rand -base64 18 | tr -dc 'A-Za-z0-9' | head -c 4)-$(openssl rand -base64 18 | tr -dc 'A-Za-z0-9' | head -c 4)-$(openssl rand -base64 18 | tr -dc 'A-Za-z0-9' | head -c 4)"
+  local pw h got; pw="$(openssl rand -base64 18 | tr -dc 'A-Za-z0-9' | head -c 4)-$(openssl rand -base64 18 | tr -dc 'A-Za-z0-9' | head -c 4)-$(openssl rand -base64 18 | tr -dc 'A-Za-z0-9' | head -c 4)"
+  h="$(scrypt_hash "$pw")"
+  case "$h" in scrypt\$16384\$8\$1\$?*\$?*) ;; *) echo "❌ 비밀번호 해시 생성 실패 (openssl kdf 확인: pkg install openssl-tool)" >&2; exit 1 ;; esac
   $HC config set dashboard.basic_auth.username fold >/dev/null
-  $HC config set dashboard.basic_auth.password_hash "$(scrypt_hash "$pw")" >/dev/null
+  set_secret_value dashboard.basic_auth.password_hash "$h"
   $HC config set dashboard.basic_auth.password "" >/dev/null 2>&1 || true
+  got="$(get_value dashboard.basic_auth.password_hash | tr -d "[:space:]\"'" | grep -o 'scrypt.*' || true)"
+  if [ -n "$got" ] && [ "$got" != "$h" ]; then echo "❌ 저장된 비밀번호 해시가 깨졌습니다 (저장: '${got:0:24}…')" >&2; exit 1; fi
+  [ -n "$got" ] || echo "(참고: 저장값 확인 생략 — config get 결과 없음)" >&2
   echo "$pw"
 }
 
@@ -114,6 +133,9 @@ start() {
 stop() {
   remote_off >/dev/null 2>&1 || true
   if running; then kill "$(cat "$STATE/server.pid")" 2>/dev/null || true; sleep 1; fi
+  # proot 안에서 뜬 서버는 바깥 pid 를 죽여도 남을 수 있음 → 명령줄로 한 번 더 정리
+  pkill -f "dashboard --skip-build --no-open --host 127.0.0.1 --port $PORT" 2>/dev/null || true
+  for _ in 1 2 3 4 5; do curl -s -o /dev/null "http://127.0.0.1:$PORT/" || break; sleep 1; done
   rm -f "$STATE/server.pid"; say "중지됨"
 }
 
@@ -152,6 +174,6 @@ case "${1:-}" in
   status) status ;;
   remote-on) remote_on ;;
   remote-off) remote_off ;;
-  password) pw="$(new_password)"; echo "새 비밀번호: $pw  (아이디 fold) — 서버 재시작 필요"; running && { stop; start; } ;;
+  password) pw="$(new_password)"; stop >/dev/null; start >/dev/null; echo "새 비밀번호: $pw  (아이디 fold) — 서버 재시작 완료, 이 비밀번호로 로그인" ;;
   *) sed -n '2,9p' "$0"; exit 1 ;;
 esac

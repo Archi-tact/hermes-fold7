@@ -74,10 +74,10 @@ sleep 2; F1="$(focus)"
 [ -n "$TT" ] && [ "$F0" = "$F1" ] && ok "보호막이 사람 터치 차단 (화면 그대로)" || { bad "보호막 터치 차단"; echo "   $F0 → $F1"; }
 
 echo "== 5. 에이전트 조작은 통과 (강조 표시 후 느리게)"
-( sleep 0.3; snap "click-highlight" ) &
+( sleep 0.3; snap "click-highlight" ) & SNAP_PID=$!
 T0=$(date +%s%N)
 S="$(ph c1 hands-click "text:$TT")"
-T1=$(date +%s%N); wait
+T1=$(date +%s%N); wait "$SNAP_PID" 2>/dev/null
 F2="$(focus)"
 [ "$(jqv .ok "$S")" = true ] && [ "$F2" != "$F1" ] && ok "에이전트 클릭으로 '$TT' 열림" || { bad "에이전트 클릭"; echo "   $S / $F2"; }
 MS=$(( (T1-T0)/1000000 ))

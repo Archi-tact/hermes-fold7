@@ -49,6 +49,7 @@ jobs:
       - name: Termux + 폰 브리지 설치 (Hermes 본체 없이)
         run: sudo -E PLAN=none bash lab/redroid/install-termux.sh
       - name: Hermes Hands 종단 테스트 (녹화)
+        timeout-minutes: 25
         shell: bash
         run: |
           mkdir -p lab/redroid/artifacts

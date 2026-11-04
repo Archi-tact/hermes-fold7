@@ -60,6 +60,10 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 .msg.ai pre{background:var(--sunk);border:1px solid var(--line);padding:10px 12px;border-radius:10px;overflow:auto;font:12.5px/1.5 var(--mono)}
 .msg.ai pre code{background:none;padding:0}
 .msg.ai a{color:var(--accent)}
+.think{color:var(--faint);font-size:13.5px;display:flex;gap:8px;align-items:center}
+.think .dots::after{content:"";animation:dots 1.4s steps(4) infinite}
+@keyframes dots{0%{content:""}25%{content:"."}50%{content:".."}75%{content:"..."}}
+.think small{color:var(--faint);font-variant-numeric:tabular-nums}
 .caret::after{content:"";display:inline-block;width:7px;height:15px;background:var(--accent);margin-left:2px;vertical-align:-2px;animation:blink 1s steps(2) infinite}
 @keyframes blink{50%{opacity:0}}
 /* 도구 카드 */
@@ -285,8 +289,24 @@ function aiNode() {
 }
 function aiDelta(t) { const c = aiNode(); c.text += t; c.el.innerHTML = md(c.text); c.el.classList.add("caret"); scrollDown(); }
 function aiSeal() { if (S.cur) { S.cur.el.classList.remove("caret"); if (!S.cur.text.trim()) S.cur.el.remove(); } S.cur = null; }
+let thinkEl = null, thinkT0 = 0, thinkTimer = null, thinkKind = "wait";
+function showThink(kind) {
+  if (!S.busy) return;
+  thinkKind = kind || thinkKind;
+  if (!thinkEl) { thinkEl = document.createElement("div"); thinkEl.className = "think"; thinkT0 = Date.now(); msgs.append(thinkEl);
+    thinkTimer = setInterval(renderThink, 1000); }
+  msgs.append(thinkEl); renderThink(); scrollDown();
+}
+function renderThink() {
+  if (!thinkEl) return;
+  const sec = Math.round((Date.now() - thinkT0) / 1000);
+  const label = thinkKind === "reason" ? "💭 생각하는 중" : "⏳ 모델 응답 기다리는 중";
+  thinkEl.innerHTML = `<span>${label}<span class="dots"></span></span><small>${sec}초</small>`;
+}
+function hideThink() { if (thinkEl) { thinkEl.remove(); thinkEl = null; } clearInterval(thinkTimer); thinkTimer = null; }
 function setBusy(b) {
   S.busy = b; const s = $("send");
+  if (b) setTimeout(() => S.busy && !S.cur && showThink("wait"), 50); else hideThink();
   s.classList.toggle("stop", b); s.textContent = b ? "■" : "↑"; s.setAttribute("aria-label", b ? "멈추기" : "보내기");
   s.disabled = !b && !$("input").value.trim();
 }
@@ -373,9 +393,10 @@ function onEvent(e) {
   if (e.session_id && S.sid && e.session_id !== S.sid && e.type !== "gateway.ready") return;
   const p = e.payload || {};
   switch (e.type) {
-    case "message.delta": if (p.text) aiDelta(p.text); else aiSeal(); break;
-    case "tool.start": toolStart(p); break;
-    case "tool.complete": toolDone(p); break;
+    case "message.delta": hideThink(); if (p.text) aiDelta(p.text); else aiSeal(); break;
+    case "reasoning.delta": case "thinking.delta": case "reasoning.available": if (!S.cur) showThink("reason"); break;
+    case "tool.start": hideThink(); toolStart(p); break;
+    case "tool.complete": toolDone(p); if (S.busy) showThink("wait"); break;
     case "message.complete": {
       if (!S.cur && typeof p.text === "string" && p.text && !p.response_reused) aiDelta(p.text);
       if (p.status === "error" || p.error) { aiDelta("\n\n⚠️ " + (p.error || "오류")); }

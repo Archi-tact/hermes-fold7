@@ -7,6 +7,7 @@
 #   bash scripts/80-hermes-fold.sh remote-on   # PC Hermes Desktop 연결 허용 (Tailscale 안에서만)
 #   bash scripts/80-hermes-fold.sh remote-off
 #   bash scripts/80-hermes-fold.sh password    # 새 비밀번호 발급
+#   bash scripts/80-hermes-fold.sh update      # 화면 파일만 최신으로 (git pull 뒤)
 #
 # 구조 (서버 하나):
 #   hermes dashboard --host 127.0.0.1 --port 9130   ← Hermes 공식 서버. 화면만 Hermes Fold 로 교체(HERMES_WEB_DIST)
@@ -169,6 +170,7 @@ status() {
 
 case "${1:-}" in
   setup) setup ;;
+  update) put_web; say "화면 파일 갱신 완료 → 브라우저 새로고침" ;;
   start) start ;;
   stop) stop ;;
   status) status ;;

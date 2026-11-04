@@ -16,6 +16,7 @@ jobs:
       - name: 모델 목록 + 속도 측정
         shell: bash
         run: |
+          set +e +o pipefail
           B=https://integrate.api.nvidia.com/v1
           curl -fsS -H "Authorization: Bearer $KEY" "$B/models" | jq -r '.data[].id' | sort > models.txt
           echo "전체 모델 수: $(wc -l < models.txt)"

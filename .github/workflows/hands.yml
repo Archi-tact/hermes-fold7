@@ -13,19 +13,38 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    permissions:
+      contents: write     # 처음 한 번: 암호화된 서명 키 저장
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: "17" }
       - uses: gradle/actions/setup-gradle@v4
         with: { gradle-version: "8.10.2" }
-      - name: APK 빌드 (고정 서명 키가 Secrets 에 있으면 그 키로 → 폰에서 덮어쓰기 업데이트 가능)
+      - name: 서명 키 준비 (Secrets 의 HANDS_SIGNING_PASS 로 암호화된 키 사용 · 없으면 처음 한 번 생성)
         env:
-          KS_B64: ${{ secrets.HANDS_KEYSTORE_B64 }}
-          HANDS_KEYSTORE_PASSWORD: ${{ secrets.HANDS_KEYSTORE_PASSWORD }}
+          PASS: ${{ secrets.HANDS_SIGNING_PASS }}
         run: |
-          if [ -n "$KS_B64" ]; then echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/hands.jks"; export HANDS_KEYSTORE="$RUNNER_TEMP/hands.jks"; echo "고정 키로 서명"; else echo "::warning::HANDS_KEYSTORE_B64 없음 → 임시 키 서명 (업데이트 시 기존 앱 삭제 필요)"; fi
-          gradle -p android/hands --no-daemon assembleRelease
+          ENC=android/hands/signing/hands.jks.enc
+          if [ -z "$PASS" ]; then echo "::warning::HANDS_SIGNING_PASS 없음 → 임시 키 서명 (업데이트 시 기존 앱 삭제 필요)"; exit 0; fi
+          [ ${#PASS} -ge 20 ] || { echo "::error::HANDS_SIGNING_PASS 는 20자 이상이어야 합니다"; exit 1; }
+          if [ ! -f "$ENC" ]; then
+            [ "$GITHUB_REF" = refs/heads/main ] || { echo "main 에서만 키 생성"; exit 0; }
+            keytool -genkeypair -keystore "$RUNNER_TEMP/hands.jks" -storetype PKCS12 -alias hands -keyalg RSA -keysize 3072 \
+              -validity 10000 -storepass "$PASS" -keypass "$PASS" -dname "CN=Hermes Hands, O=hermes-fold7" >/dev/null
+            mkdir -p "$(dirname "$ENC")"
+            openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -salt -in "$RUNNER_TEMP/hands.jks" -out "$ENC" -pass env:PASS
+            git config user.name "github-actions[bot]"; git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add "$ENC"; git commit -m "Add encrypted Hermes Hands signing key [skip ci]" && git push origin HEAD:main
+            echo "새 서명 키 생성 (암호화 저장)"
+          fi
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -in "$ENC" -out "$RUNNER_TEMP/hands.jks" -pass env:PASS
+          echo "HANDS_KEYSTORE=$RUNNER_TEMP/hands.jks" >> "$GITHUB_ENV"
+          keytool -list -v -keystore "$RUNNER_TEMP/hands.jks" -storepass "$PASS" | grep -m1 'SHA256:' | sed 's/^\s*/서명 지문 /'
+      - name: APK 빌드
+        env:
+          HANDS_KEYSTORE_PASSWORD: ${{ secrets.HANDS_SIGNING_PASS }}
+        run: gradle -p android/hands --no-daemon assembleRelease
       - name: 결과 정리
         run: |
           cp android/hands/app/build/outputs/apk/release/app-release.apk hermes-hands.apk

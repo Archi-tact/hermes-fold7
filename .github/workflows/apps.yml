@@ -19,13 +19,8 @@ jobs:
         with: { distribution: temurin, java-version: "17" }
       - uses: gradle/actions/setup-gradle@v4
         with: { gradle-version: "8.10.2" }
-      - name: APK 빌드 (고정 서명 키가 Secrets 에 있으면 그 키로 → 폰에서 덮어쓰기 업데이트 가능)
-        env:
-          KS_B64: ${{ secrets.HANDS_KEYSTORE_B64 }}
-          HANDS_KEYSTORE_PASSWORD: ${{ secrets.HANDS_KEYSTORE_PASSWORD }}
-        run: |
-          if [ -n "$KS_B64" ]; then echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/hands.jks"; export HANDS_KEYSTORE="$RUNNER_TEMP/hands.jks"; echo "고정 키로 서명"; else echo "::warning::HANDS_KEYSTORE_B64 없음 → 임시 키 서명 (업데이트 시 기존 앱 삭제 필요)"; fi
-          gradle -p android/hands --no-daemon assembleRelease
+      - name: APK 빌드 (테스트용 — 임시 키)
+        run: gradle -p android/hands --no-daemon assembleRelease
       - name: 결과 정리
         run: |
           cp android/hands/app/build/outputs/apk/release/app-release.apk hermes-hands.apk

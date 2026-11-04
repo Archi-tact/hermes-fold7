@@ -32,6 +32,8 @@ MUST_ALLOW = [
     "phone settings",
     "phone hands-read",
     "phone hands-run @calc",
+    "phone hands-apps 카카오",
+    "phone hands-open com.android.settings",
 ]
 fail = 0
 for cmd in MUST_BLOCK:

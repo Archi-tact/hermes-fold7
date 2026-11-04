@@ -32,6 +32,18 @@ shows a blue frame over the screen during a session, blocks the user's touches e
 5. Never type passwords, OTPs or card numbers. Password fields are hidden (`"pw": true`) and refused.
    Ask the user to enter them during a pause.
 
+## Finding and opening apps (do this first — never hunt through the home screen)
+
+```
+phone hands-apps 카카오        # → {"apps":[{"name":"카카오톡","package":"com.kakao.talk"}, …]}
+phone hands-apps               # all launchable apps (name + package, up to 80)
+phone hands-open com.kakao.talk   # just open it (no screen-control session needed)
+```
+- The user says an app's **name** ("유튜브 열어줘") → `hands-apps <name>` → pick the matching `package` → `hands-open <package>`.
+- Try the Korean name, then the English name, then a shorter part ("네이버 지도" → "지도" → "map").
+- `"blocked": true` apps (bank/pay/auth) cannot be opened or controlled — tell the user.
+- To **operate** inside the app afterwards, start a session that includes that package: `hands-start 5 <package> "제목"`.
+
 ## Choose the cheapest way first
 
 1. **No screen at all** — a setting? use `phone set …` (see fold7-phone). A web page's data? use web search/fetch.

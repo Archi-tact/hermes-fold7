@@ -5,6 +5,8 @@ import android.accessibilityservice.GestureDescription;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.ResolveInfo;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.Path;
 import android.graphics.PixelFormat;
@@ -243,6 +245,8 @@ public class HandsService extends AccessibilityService {
             case "status": return status();
             case "start": return start(q);
             case "check": return checkApps(q);   // 확인창 전에 금지 앱 사전 검사 (세션 안 만듦)
+            case "apps": return listApps(q);     // 설치된 앱 이름 → 패키지 (홈 화면을 뒤질 필요 없음)
+            case "open": return openApp(q);      // 앱 바로 열기 (조작은 안 함 · 금지 앱 제외)
             case "stop": endSession("에이전트 요청"); return ok();
         }
         if (!active) return err("no active session (먼저 hands-start)");
@@ -573,6 +577,43 @@ public class HandsService extends AccessibilityService {
         boolean done = performGlobalAction(action);
         afterStep();
         return done ? ok() : err(name + " failed");
+    }
+
+
+    /** 실행 가능한 앱 목록: 이름(라벨)·패키지. q 가 있으면 이름/패키지에 포함된 것만. 금지 앱은 표시만 하고 열 수 없음. */
+    private JSONObject listApps(JSONObject q) throws Exception {
+        String want = q.optString("q", "").trim().toLowerCase(Locale.ROOT);
+        PackageManager pm = getPackageManager();
+        Intent main = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
+        List<ResolveInfo> ris = pm.queryIntentActivities(main, 0);
+        List<JSONObject> rows = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        for (ResolveInfo ri : ris) {
+            String pkg = ri.activityInfo.packageName;
+            if (pkg.equals(getPackageName()) || !seen.add(pkg)) continue;
+            String label = String.valueOf(ri.loadLabel(pm));
+            if (!want.isEmpty() && !label.toLowerCase(Locale.ROOT).contains(want) && !pkg.toLowerCase(Locale.ROOT).contains(want)) continue;
+            JSONObject o = new JSONObject().put("name", label).put("package", pkg);
+            if (denied(pkg)) o.put("blocked", true);
+            rows.add(o);
+        }
+        rows.sort((a, b) -> a.optString("name").compareToIgnoreCase(b.optString("name")));
+        JSONArray out = new JSONArray();
+        for (int i = 0; i < rows.size() && i < 80; i++) out.put(rows.get(i));
+        return ok().put("count", rows.size()).put("apps", out);
+    }
+
+    /** 앱을 열기만 함 (화면 조작 세션 불필요). 은행·결제·인증 앱은 거부. */
+    private JSONObject openApp(JSONObject q) throws Exception {
+        String pkg = q.optString("package", "");
+        if (!pkg.matches("[A-Za-z0-9_.]+")) return err("bad package: " + pkg);
+        if (denied(pkg)) return err("denied package (은행·결제·인증 앱): " + pkg);
+        Intent it = getPackageManager().getLaunchIntentForPackage(pkg);
+        if (it == null) return err("not launchable (설치 안 됨?): " + pkg);
+        it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
+        startActivity(it);
+        Thread.sleep(1500);
+        return ok().put("opened", pkg).put("foreground", foreground());
     }
 
     private JSONObject launch(JSONObject q) throws Exception {

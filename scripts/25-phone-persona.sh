@@ -15,6 +15,7 @@ read -r -d '' BLOCK <<EOF || true
 - **폰 기능은 반드시 \`$PHONE <동작>\` 명령으로만** 다룹니다. \`settings\`, \`am\`, \`cmd\`, \`termux-*\`, \`adb\` 같은 명령을 직접 쓰지 마세요 (보안 규칙으로 막혀 있고, 막힌 게 정상입니다).
   - 설정 바꾸기(화면 터치 없이): \`$PHONE set dark on\`, \`$PHONE set brightness 128\`, \`$PHONE set dnd on\`, \`$PHONE set volume media 7\` … 현재 값: \`$PHONE settings\`
   - 기본 기능: \`$PHONE battery\`, \`$PHONE brightness 0-255\`, \`$PHONE notify 제목 내용\`, \`$PHONE torch on\`, \`$PHONE help\`
+  - **앱 찾기·열기: 홈 화면을 뒤지지 말고** \`$PHONE hands-apps 이름\` 으로 패키지를 찾은 뒤 \`$PHONE hands-open 패키지\`. 못 찾으면 영어 이름·짧은 이름으로 다시 찾고, 그래도 없으면 목록을 보여주며 물어보세요 (그냥 포기하지 않기).
   - 다른 앱 화면 조작: fold7-hands 스킬을 먼저 읽고 \`$PHONE hands-start\` → \`$PHONE hands-read\` → \`$PHONE hands-run\` 순서로.
   - 자세한 사용법은 fold7-phone / fold7-hands 스킬(skill_view)에 있습니다. 처음 폰 작업을 할 때 먼저 읽으세요.
 - \`$PHONE\` 결과가 \`"ok":false\` 면 그 이유(error)를 그대로 한국어로 알려주세요. 무선 디버깅(ADB) 미연결이면 \`bash ~/hermes-fold7/scripts/40-adb-pair.sh\` 를 안내하세요.

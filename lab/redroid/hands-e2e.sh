@@ -48,6 +48,15 @@ rec_start "$ART/frames"
 trap 'rec_stop "$ART/frames"; rm -rf "$WORK"' EXIT
 AS am start -n com.android.settings/.Settings >/dev/null; sleep 2
 
+echo "== 1b. 앱 이름으로 찾고 열기 (세션 없이)"
+S="$(ph ap1 hands-apps Settings)"
+[ "$(jqv '.apps | map(.package) | index("com.android.settings") != null' "$S")" = true ] && ok "앱 이름으로 찾기 (Settings → com.android.settings)" || { bad "앱 찾기"; echo "$S" | head -c 300; }
+S="$(ph ap2 hands-open com.android.settings)"; sleep 1
+[ "$(jqv .ok "$S")" = true ] && [[ "$(focus)" == *com.android.settings* ]] && ok "앱 바로 열기 (hands-open)" || { bad "앱 열기"; echo "$S"; }
+S="$(ph ap3 hands-open com.kbstar.kbbank)"
+[[ "$S" == *"denied package"* ]] && ok "금지 앱(은행)은 열기도 거부" || { bad "금지 앱 열기 거부"; echo "$S"; }
+AS input keyevent KEYCODE_HOME
+
 echo "== 2. 세션 없이는 거부"
 S="$(ph d0 hands-dump)"
 [[ "$S" == *"no active session"* ]] && ok "세션 없이 화면 읽기 거부" || { bad "세션 없이 화면 읽기 거부"; echo "$S"; }

@@ -48,7 +48,7 @@ declare -A POLICY=(
   [hands-status]=allow [hands-start]=confirm [hands-stop]=allow [hands-dump]=allow
   [hands-click]=allow [hands-type]=allow [hands-scroll]=allow [hands-back]=allow [hands-home]=allow
   [hands-launch]=allow [hands-tap]=allow [hands-swipe]=allow [hands-wait]=allow
-  [hands-read]=allow [hands-run]=allow
+  [hands-read]=allow [hands-run]=allow [hands-apps]=allow [hands-open]=allow
   # 설정 직접 변경 (화면 터치 없이, 무선 디버깅 ADB 셸 권한 — MacroDroid 도우미와 같은 방식)
   #   set-<이름> 으로 항목별 정책 지정. 연결이 끊길 수 있는 항목은 기본 confirm
   [settings]=allow [set]=allow
@@ -265,6 +265,9 @@ case "$ACTION" in
                  IFS=',' read -r -a PK <<< "$(arg 1)"; for p in "${PK[@]}"; do pkg_ok "$p"; done
                  hands start "$(jq -cn --argjson m "$(arg 0)" --arg a "$(arg 1)" --arg t "$(arg 2)" '{minutes:$m, apps:($a|split(",")), title:$t}')" ;;
   hands-stop)    hands stop ;;
+  hands-apps)    # 설치된 앱 찾기: phone hands-apps 카카오  → [{name, package}]
+                 hands apps "$(jq -cn --arg q "${ARGS[0]:-}" '{q:$q}')" ;;
+  hands-open)    need 1 "PACKAGE (phone hands-apps 로 찾기)"; pkg_ok "$(arg 0)"; hands open "$(jq -cn --arg p "$(arg 0)" '{package:$p}')" ;;
   hands-read)    # 화면 구조를 '코드처럼' 짧은 들여쓰기 텍스트로: [번호] 종류 "글자" #id {click,edit,…}
                  out="$(hands dump)"
                  if [ "$(jq -r '.ok' <<<"$out" 2>/dev/null)" != true ]; then printf '%s\n' "$out"; exit 1; fi

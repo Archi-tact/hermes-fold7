@@ -18,7 +18,13 @@ fi
 say "패키지 저장소 갱신"
 export DEBIAN_FRONTEND=noninteractive
 APT_OPTS=(-y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confnew)
-pkg update -y
+# 무작위로 고른 미러가 고장(404)일 때가 있음 → 실패하면 공식 서버로 고정하고 다시 시도
+if ! apt-get update 2>&1 | tee "$TMPDIR/apt-update.log" | grep -q . || grep -qE '^(E|Err):' "$TMPDIR/apt-update.log"; then
+  echo "⚠ 패키지 미러 오류 → 공식 서버(packages-cf.termux.dev)로 전환"
+  rm -f "$PREFIX/etc/termux/chosen_mirrors" 2>/dev/null || true
+  echo "deb https://packages-cf.termux.dev/apt/termux-main stable main" > "$PREFIX/etc/apt/sources.list"
+  apt-get update
+fi
 apt-get "${APT_OPTS[@]}" upgrade
 
 say "기본 도구 설치"

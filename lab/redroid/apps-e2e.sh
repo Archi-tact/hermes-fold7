@@ -240,13 +240,17 @@ if [ -n "$BROWSER" ] && launch "$BROWSER"; then
     echo "     (누름: $(jq -r ".nodes[$i].text // .nodes[$i].desc // .nodes[$i].id" <<<"$D"))"; click_i "$i"; sleep 1.5
   done
   show 20
-  if find_el '.edit == true'; then
+  # 주소창 우선: 웹페이지 안 검색칸이 아닌, 브라우저 자체 입력칸(id 있음: url/search/address)
+  dump; I="$(idx '.edit == true and ((.id // "") | test("url|search|address|location"; "i"))')"
+  [ -n "$I" ] || I="$(idx '.edit == true')"
+  echo "     주소창: [$I] $(jq -r ".nodes[${I:-0}].id // .nodes[${I:-0}].cls" <<<"$D")"
+  if [ -n "$I" ]; then
     if type_i "$I" "https://example.com" enter; then
       ok "⑥ 주소 입력 + Enter(이동)"
-      LOADED=0; for k in 1 2 3 4 5 6; do sleep 3; dump; has "$(T 'Example Domain')" && { LOADED=1; break; }; done
+      LOADED=0; for k in 1 2 3 4 5 6; do sleep 3; dump; has "$(T 'This domain is for use')" && { LOADED=1; break; }; done
       snap "browser-example"
       if [ $LOADED = 1 ]; then
-        ok "⑥ 웹페이지 내용 읽기 ('Example Domain')"
+        ok "⑥ 웹페이지 본문 읽기 ('This domain is for use…')"
         if tap_el "$(T '^(More information|Learn more)')"; then
           NEXT=0; for k in 1 2 3 4 5 6; do sleep 3; dump; has "$(T 'IANA|Internet Assigned Numbers|example domains')" && { NEXT=1; break; }; done
           snap "browser-link"

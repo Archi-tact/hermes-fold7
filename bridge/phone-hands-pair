@@ -5,8 +5,13 @@ set -euo pipefail
 BH="${HERMES_BRIDGE_HOME:-$HOME/.hermes-bridge}"
 tok="${1:-}"
 if [ -z "$tok" ]; then
-  tok="$(termux-clipboard-get 2>/dev/null | tr -d '[:space:]')"
+  tok="$(timeout 10 termux-clipboard-get 2>/dev/null | tr -d '[:space:]' || true)"
   from_clip=1
+  # 안드로이드가 클립보드 읽기를 막으면 빈 값 → 직접 붙여넣기 (화면 길게 누르기 → 붙여넣기)
+  if [[ ! "$tok" =~ ^[0-9a-f]{32,64}$ ]] && [ -t 0 ]; then
+    read -r -s -p "토큰을 붙여넣고 엔터 (화면 길게 누르기 → 붙여넣기, 화면엔 안 보임): " tok; echo
+    tok="$(printf '%s' "$tok" | tr -d '[:space:]')"
+  fi
 fi
 [[ "$tok" =~ ^[0-9a-f]{32,64}$ ]] || { echo "토큰 형식이 아닙니다. Hermes Hands 앱 → '토큰 복사' 후 다시 실행하세요." >&2; exit 1; }
 umask 077

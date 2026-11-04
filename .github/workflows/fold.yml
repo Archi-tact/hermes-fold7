@@ -1,0 +1,85 @@
+# Hermes Fold — 폰 전용 화면 + PC Desktop 원격 연결을 실제 Hermes 서버·실제 모델(NVIDIA)로 종단 테스트
+#   결과: 실행 페이지 Summary 에 접은 화면/펼친 화면 스크린샷 (fold-results 브랜치)
+name: fold
+on:
+  workflow_dispatch:
+  push:
+    paths: ["ui/fold/**", "scripts/80-hermes-fold.sh", "lab/fold/**", ".github/workflows/fold.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: write     # 결과 스크린샷 게시
+    env:
+      NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+      NVIDIA_MODEL: nvidia/nemotron-3-ultra-550b-a55b
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      ART_DIR: ${{ github.workspace }}/fold-art
+      HERMES_MODE: apt
+    steps:
+      - uses: actions/checkout@v4
+      - name: 준비물 (socat)
+        run: sudo apt-get install -y -qq socat >/dev/null
+      - name: Hermes 설치 (공식 install.sh)
+        run: |
+          curl -fsSL https://hermes-agent.nousresearch.com/install.sh -o "$RUNNER_TEMP/install.sh"
+          bash "$RUNNER_TEMP/install.sh" --non-interactive --skip-browser --skip-computer-use
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: 모델 설정 (NVIDIA) + 승인 모드
+        run: |
+          hermes --version
+          hermes config set model.provider nvidia
+          hermes config set model.default "$NVIDIA_MODEL"
+          hermes config set approvals.mode manual
+          if [ -n "$NVIDIA_API_KEY" ]; then hermes config set NVIDIA_API_KEY "$NVIDIA_API_KEY" >/dev/null; echo "HAS_KEY=1" >> "$GITHUB_ENV"; else echo "HAS_KEY=0" >> "$GITHUB_ENV"; fi
+      - name: Hermes Fold 설치 + 시작 + PC 연결 허용
+        shell: bash
+        run: |
+          mkdir -p "$ART_DIR"
+          # 러너의 내부 IP 를 'Tailscale 주소' 역할로 사용 (실폰에선 100.x.y.z)
+          TS_IP="$(hostname -I | awk '{print $1}')"; echo "TS_IP=$TS_IP" >> "$GITHUB_ENV"; export TS_IP
+          bash scripts/80-hermes-fold.sh setup | tee "$RUNNER_TEMP/setup.log"
+          PW="$(grep -oP '비밀번호 \K\S+' "$RUNNER_TEMP/setup.log" | head -1)"; echo "::add-mask::$PW"; echo "FOLD_PASSWORD=$PW" >> "$GITHUB_ENV"
+          bash scripts/80-hermes-fold.sh start
+          bash scripts/80-hermes-fold.sh remote-on | sed 's/Session token : .*/Session token : ***/'
+          bash scripts/80-hermes-fold.sh status
+          echo "--- 열려 있는 포트 9130 ---"; ss -ltn | grep 9130 | tee "$RUNNER_TEMP/ports.txt"
+      - name: 보안 — 와이파이/전체 인터페이스에 안 열림
+        shell: bash
+        run: |
+          { grep -q "127.0.0.1:9130" "$RUNNER_TEMP/ports.txt" && echo "OK   서버는 127.0.0.1 에만 열림"; } || { echo "FAIL 127.0.0.1 바인드 없음"; exit 1; }
+          if grep -qE "0\.0\.0\.0:9130|\*:9130|\[::\]:9130" "$RUNNER_TEMP/ports.txt"; then echo "FAIL 모든 인터페이스에 열림"; exit 1; fi
+          echo "OK   모든 인터페이스(0.0.0.0)에는 안 열림 — 원격은 지정 주소($TS_IP) 중계만"
+      - name: PC Hermes Desktop 원격 경로 (토큰)
+        shell: bash
+        run: |
+          HPY="$(dirname "$(readlink -f "$(command -v hermes)")")/python"
+          "$HPY" lab/fold/desktop-remote.py "http://$TS_IP:9130" "$(cat "$HOME/.hermes-fold-srv/desktop.token")" | tee "$ART_DIR/desktop-result.txt"
+      - name: 폰 화면 종단 테스트 (Playwright, 실제 모델)
+        shell: bash
+        run: |
+          cd lab/fold && npm init -y >/dev/null && npm i -s playwright@1.49.1 >/dev/null && npx -y playwright@1.49.1 install --with-deps chromium >/dev/null
+          FOLD_URL=http://127.0.0.1:9130 node fold-e2e.js | tee "$ART_DIR/e2e-result.txt"
+      - name: 서버 로그 (실패 시)
+        if: failure()
+        run: tail -80 "$HOME/.hermes-fold/server.log" || true
+      - name: 스크린샷 → 실행 결과 페이지
+        if: always()
+        env:
+          RESULTS_BRANCH: fold-results
+          RESULTS_TITLE: "📱 Hermes Fold — 폰 전용 화면 (실제 Hermes + NVIDIA)"
+        run: |
+          command -v ffmpeg >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg; }
+          cat "$ART_DIR/desktop-result.txt" >> "$ART_DIR/e2e-result.txt" 2>/dev/null || true
+          bash lab/redroid/publish-results.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fold-e2e
+          path: fold-art/
+          if-no-files-found: ignore

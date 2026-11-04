@@ -1,0 +1,13 @@
+{
+  "name": "Hermes Fold",
+  "short_name": "Hermes",
+  "description": "폰에서 돌아가는 Hermes 에이전트 비서",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#1b1a18",
+  "theme_color": "#1b1a18",
+  "icons": [
+    { "src": "/assets/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

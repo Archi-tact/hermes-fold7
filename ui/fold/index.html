@@ -1,0 +1,488 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="theme-color" content="#1b1a18" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f7f5ef" media="(prefers-color-scheme: light)">
+<title>Hermes Fold</title>
+<link rel="manifest" href="/assets/manifest.webmanifest">
+<link rel="icon" href="/assets/icon.svg" type="image/svg+xml">
+<style>
+:root{
+  --bg:#f7f5ef; --panel:#fffefb; --sunk:#efece4; --line:#e3dfd4; --text:#22211e; --muted:#6c6a63; --faint:#9a978e;
+  --accent:#c96442; --accent-soft:#f3e3da; --ok:#2f8f5b; --warn:#b7791f; --bad:#c2410c; --user:#ece8de;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+  --sans:system-ui,-apple-system,"Segoe UI","Noto Sans KR","Apple SD Gothic Neo",sans-serif;
+  --r:14px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#1b1a18; --panel:#232220; --sunk:#181715; --line:#34322e; --text:#ecebe6; --muted:#a6a39b; --faint:#77746c;
+  --accent:#e0805d; --accent-soft:#3a2a23; --ok:#5fbf8a; --warn:#e0a84a; --bad:#f07a4a; --user:#2d2b28;
+}}
+:root[data-theme="dark"]{
+  --bg:#1b1a18; --panel:#232220; --sunk:#181715; --line:#34322e; --text:#ecebe6; --muted:#a6a39b; --faint:#77746c;
+  --accent:#e0805d; --accent-soft:#3a2a23; --ok:#5fbf8a; --warn:#e0a84a; --bad:#f07a4a; --user:#2d2b28;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--text);font:15px/1.55 var(--sans);-webkit-font-smoothing:antialiased;overflow:hidden}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+.app{display:grid;grid-template-columns:1fr;height:100dvh}
+/* ── 사이드바(대화 목록) ── */
+.side{display:none;flex-direction:column;background:var(--sunk);border-right:1px solid var(--line);min-width:0}
+.side.open{display:flex;position:fixed;inset:0 auto 0 0;width:min(86vw,300px);z-index:30;box-shadow:0 0 0 100vmax rgba(0,0,0,.35)}
+.side-h{display:flex;align-items:center;gap:8px;padding:14px 14px 8px}
+.brand{font-weight:650;letter-spacing:-.01em;display:flex;align-items:center;gap:8px}
+.brand i{width:22px;height:22px;border-radius:7px;background:var(--accent);display:inline-grid;place-items:center;color:#fff;font-style:normal;font-size:13px}
+.newbtn{margin:6px 12px 10px;padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel);text-align:left;display:flex;gap:8px;align-items:center}
+.newbtn:hover{border-color:var(--accent)}
+.slist{overflow:auto;padding:0 8px 12px;flex:1}
+.slabel{font-size:12px;color:var(--faint);padding:10px 8px 4px}
+.sitem{display:block;width:100%;text-align:left;padding:8px 10px;border-radius:9px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:14px}
+.sitem:hover{background:var(--line)} .sitem.on{background:var(--panel);box-shadow:inset 0 0 0 1px var(--line)}
+.sitem small{display:block;color:var(--faint);font-size:12px;overflow:hidden;text-overflow:ellipsis}
+/* ── 가운데(대화) ── */
+.main{display:flex;flex-direction:column;min-width:0;min-height:0}
+.top{display:flex;align-items:center;gap:6px;padding:10px 12px;padding-top:max(10px,env(safe-area-inset-top));border-bottom:1px solid var(--line);background:var(--bg)}
+.top .title{flex:1;min-width:0;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.icon{width:36px;height:36px;border-radius:10px;display:inline-grid;place-items:center;color:var(--muted)}
+.icon:hover{background:var(--sunk);color:var(--text)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--faint);display:inline-block}
+.dot.on{background:var(--ok)} .dot.wait{background:var(--warn)}
+.model{font:12px var(--mono);color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:3px 9px;white-space:nowrap;max-width:42vw;overflow:hidden;text-overflow:ellipsis}
+.chat{flex:1;overflow:auto;padding:18px 14px 8px;scroll-behavior:smooth}
+.inner{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+.msg{line-height:1.6;word-wrap:break-word}
+.msg.user{align-self:flex-end;background:var(--user);padding:9px 14px;border-radius:16px 16px 4px 16px;max-width:88%;white-space:pre-wrap}
+.msg.ai p{margin:.35em 0} .msg.ai ul,.msg.ai ol{margin:.35em 0;padding-left:1.3em}
+.msg.ai code{font:13px var(--mono);background:var(--sunk);padding:1px 5px;border-radius:5px}
+.msg.ai pre{background:var(--sunk);border:1px solid var(--line);padding:10px 12px;border-radius:10px;overflow:auto;font:12.5px/1.5 var(--mono)}
+.msg.ai pre code{background:none;padding:0}
+.msg.ai a{color:var(--accent)}
+.caret::after{content:"";display:inline-block;width:7px;height:15px;background:var(--accent);margin-left:2px;vertical-align:-2px;animation:blink 1s steps(2) infinite}
+@keyframes blink{50%{opacity:0}}
+/* 도구 카드 */
+.tool{border:1px solid var(--line);border-radius:12px;background:var(--panel);overflow:hidden;font-size:14px}
+.tool>summary{list-style:none;display:flex;gap:9px;align-items:center;padding:9px 12px;cursor:pointer}
+.tool>summary::-webkit-details-marker{display:none}
+.tool .ti{width:24px;height:24px;border-radius:7px;background:var(--sunk);display:grid;place-items:center;font-size:13px;flex:none}
+.tool .tl{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tool .tl b{font-weight:600} .tool .tl span{color:var(--muted);font-family:var(--mono);font-size:12.5px}
+.tool .ts{font-size:12px;color:var(--faint);white-space:nowrap}
+.tool .ts.run::before{content:"";display:inline-block;width:10px;height:10px;border:2px solid var(--accent);border-right-color:transparent;border-radius:50%;animation:spin .8s linear infinite;margin-right:5px;vertical-align:-1px}
+.tool .ts.ok{color:var(--ok)} .tool .ts.bad{color:var(--bad)}
+@keyframes spin{to{transform:rotate(1turn)}}
+.tool pre{margin:0;border-top:1px solid var(--line);padding:10px 12px;font:12px/1.5 var(--mono);white-space:pre-wrap;max-height:260px;overflow:auto;background:var(--sunk);color:var(--muted)}
+/* 승인 카드 */
+.ask{border:1px solid var(--accent);background:var(--accent-soft);border-radius:12px;padding:12px 14px}
+.ask h4{margin:0 0 6px;font-size:14px} .ask code{display:block;font:12.5px var(--mono);white-space:pre-wrap;background:var(--panel);padding:8px 10px;border-radius:8px;margin:6px 0 10px}
+.ask .row{display:flex;gap:8px;flex-wrap:wrap}
+.btn{padding:8px 14px;border-radius:10px;border:1px solid var(--line);background:var(--panel);font-weight:500}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+.ask.done{opacity:.75;border-color:var(--line);background:var(--panel)}
+/* 입력창 */
+.composer{padding:8px 12px calc(10px + env(safe-area-inset-bottom));background:linear-gradient(transparent,var(--bg) 30%)}
+.box{max-width:760px;margin:0 auto;border:1px solid var(--line);background:var(--panel);border-radius:18px;padding:8px 8px 8px 14px;display:flex;gap:6px;align-items:flex-end;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.box:focus-within{border-color:var(--accent)}
+textarea{flex:1;border:0;outline:0;resize:none;background:none;color:var(--text);font:inherit;max-height:160px;padding:6px 0;min-height:24px}
+.send{width:36px;height:36px;border-radius:11px;background:var(--accent);color:#fff;display:grid;place-items:center;flex:none}
+.send:disabled{opacity:.35}
+.send.stop{background:var(--text);color:var(--bg)}
+.chips{max-width:760px;margin:0 auto 8px;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
+.chip{white-space:nowrap;border:1px solid var(--line);border-radius:999px;padding:5px 11px;font-size:13px;color:var(--muted);background:var(--panel)}
+.chip:hover{color:var(--text);border-color:var(--accent)}
+.empty{margin:auto;text-align:center;color:var(--muted);padding:40px 10px}
+.empty .big{font-size:22px;font-weight:650;color:var(--text);margin-bottom:6px;letter-spacing:-.01em}
+/* ── 오른쪽(폰 실시간 패널) ── */
+.phone{display:none;flex-direction:column;border-left:1px solid var(--line);background:var(--sunk);min-width:0}
+.phone.open{display:flex;position:fixed;inset:0 0 0 auto;width:min(92vw,340px);z-index:30;box-shadow:0 0 0 100vmax rgba(0,0,0,.35)}
+.ph{padding:14px;display:flex;align-items:center;gap:8px;font-weight:600}
+.pbody{overflow:auto;padding:0 12px 16px;display:flex;flex-direction:column;gap:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:12px}
+.card h5{margin:0 0 8px;font-size:12px;color:var(--faint);font-weight:600;letter-spacing:.02em}
+.live{display:flex;align-items:center;gap:8px;font-size:14px}
+.bar{height:6px;border-radius:9px;background:var(--sunk);overflow:hidden;margin-top:8px} .bar i{display:block;height:100%;background:var(--accent);width:0;transition:width .4s}
+.steps{margin:8px 0 0;padding:0;list-style:none;font-size:13px;display:flex;flex-direction:column;gap:4px;max-height:200px;overflow:auto}
+.steps li{display:flex;gap:6px;color:var(--muted)} .steps li.cur{color:var(--text);font-weight:500}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.tog{border:1px solid var(--line);border-radius:12px;padding:10px;text-align:left;background:var(--bg);font-size:13px;display:flex;flex-direction:column;gap:2px}
+.tog b{font-size:14px} .tog:hover{border-color:var(--accent)}
+.outline{font:11.5px/1.45 var(--mono);white-space:pre;overflow:auto;max-height:240px;color:var(--muted);margin:0}
+.hint{font-size:12px;color:var(--faint)}
+.scrim{display:none;position:fixed;inset:0;z-index:29}
+.scrim.on{display:block}
+/* 펼친 폴드(넓은 화면): 대화 + 폰 패널 / 더 넓으면 목록까지 3단 */
+@media (min-width:700px){
+  .app{grid-template-columns:minmax(0,1fr) 300px}
+  .phone{display:flex;position:static;box-shadow:none;width:auto}
+  .btn-phone{display:none}
+}
+@media (min-width:1040px){
+  .app{grid-template-columns:260px minmax(0,1fr) 320px}
+  .side{display:flex;position:static;box-shadow:none;width:auto}
+  .btn-side{display:none}
+}
+.login{max-width:360px;margin:18vh auto;padding:24px;text-align:center}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <aside class="side" id="side">
+    <div class="side-h"><div class="brand"><i>☤</i>Hermes Fold</div></div>
+    <button class="newbtn" id="newChat">＋ 새 대화</button>
+    <div class="slist" id="slist"><div class="slabel">최근 대화</div></div>
+  </aside>
+
+  <main class="main">
+    <header class="top">
+      <button class="icon btn-side" id="openSide" aria-label="대화 목록">☰</button>
+      <span class="dot" id="conn" title="연결 상태"></span>
+      <div class="title" id="title">Hermes</div>
+      <span class="model" id="model">…</span>
+      <button class="icon btn-phone" id="openPhone" aria-label="폰 패널">📱</button>
+    </header>
+    <section class="chat" id="chat"><div class="inner" id="msgs">
+      <div class="empty" id="empty">
+        <div class="big">무엇을 도와드릴까요?</div>
+        <div>폰 앱 조작, 설정 변경, 검색, 예약 작업까지 — 말로 시키면 됩니다.</div>
+      </div>
+    </div></section>
+    <footer class="composer">
+      <div class="chips" id="chips"></div>
+      <div class="box">
+        <textarea id="input" rows="1" placeholder="Hermes 에게 부탁하기…" enterkeyhint="send"></textarea>
+        <button class="send" id="send" aria-label="보내기">↑</button>
+      </div>
+    </footer>
+  </main>
+
+  <aside class="phone" id="phone">
+    <div class="ph">📱 폰 <span class="hint" style="font-weight:400">실시간</span><span style="flex:1"></span><button class="icon btn-phone" id="closePhone">✕</button></div>
+    <div class="pbody">
+      <div class="card">
+        <h5>화면 조작 (Hermes Hands)</h5>
+        <div class="live"><span class="dot" id="hdot"></span><span id="hstate">대기 중</span></div>
+        <div class="bar"><i id="hbar"></i></div>
+        <ul class="steps" id="hsteps"></ul>
+        <div class="hint" style="margin-top:8px">조작 중엔 폰 화면 가운데 ⏸ 로 멈추고, 볼륨↓ 3번이면 비상정지.</div>
+      </div>
+      <div class="card">
+        <h5>빠른 설정 — 화면 터치 없이 바로</h5>
+        <div class="grid" id="quick"></div>
+      </div>
+      <div class="card">
+        <h5>마지막으로 읽은 화면 구조</h5>
+        <pre class="outline" id="outline">아직 없음</pre>
+      </div>
+      <div class="card">
+        <h5>레시피 (저장된 자동화)</h5>
+        <div class="hint" id="recipes">Hermes 가 성공한 흐름을 ~/work/recipes 에 저장하면 여기서 한 번에 실행할 수 있어요.</div>
+      </div>
+    </div>
+  </aside>
+</div>
+<div class="scrim" id="scrim"></div>
+
+<script>
+"use strict";
+/* ───────────── 설정 ───────────── */
+const DEMO = new URLSearchParams(location.search).has("demo");
+const CHIPS = ["다크 모드 켜줘", "오늘 서울 날씨 알려줘", "배터리 몇 %야?", "방해 금지 1시간 켜줘", "계산기로 12×34 해줘"];
+const QUICK = [
+  ["🌙", "다크 모드", "다크 모드 켜줘"], ["☀️", "밝기 50%", "화면 밝기를 50%로 해줘"],
+  ["🔕", "방해 금지", "방해 금지 모드 켜줘"], ["🔋", "절전", "절전 모드 켜줘"],
+  ["📶", "와이파이", "와이파이 상태 알려줘"], ["⚙️", "현재 설정", "지금 폰 설정 상태 알려줘 (phone settings)"],
+];
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+/* ───────────── 마크다운(가벼운 버전) ───────────── */
+function md(src) {
+  const blocks = String(src || "").split(/```/);
+  return blocks.map((b, i) => {
+    if (i % 2) { const nl = b.indexOf("\n"); return `<pre><code>${esc(nl >= 0 ? b.slice(nl + 1) : b)}</code></pre>`; }
+    let h = esc(b)
+      .replace(/`([^`\n]+)`/g, "<code>$1</code>")
+      .replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>")
+      .replace(/\[([^\]\n]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    const out = []; let list = null;
+    for (const line of h.split("\n")) {
+      const m = line.match(/^\s*(?:[-*•]|(\d+)\.)\s+(.*)/);
+      if (m) { const t = m[1] ? "ol" : "ul"; if (list !== t) { if (list) out.push(`</${list}>`); out.push(`<${t}>`); list = t; } out.push(`<li>${m[2]}</li>`); continue; }
+      if (list) { out.push(`</${list}>`); list = null; }
+      if (/^#{1,4}\s/.test(line)) out.push(`<p><b>${line.replace(/^#+\s/, "")}</b></p>`);
+      else if (line.trim()) out.push(`<p>${line}</p>`);
+    }
+    if (list) out.push(`</${list}>`);
+    return out.join("");
+  }).join("");
+}
+
+/* ───────────── 도구 이름 → 사람이 읽는 표시 ───────────── */
+function describeTool(name, args) {
+  const cmd = (args && (args.command || args.cmd)) || "";
+  const m = typeof cmd === "string" && cmd.match(/(?:^|\s)phone\s+([\w-]+)\s*(.*)$/);
+  if (m) {
+    const a = m[1], rest = m[2].slice(0, 80);
+    const map = {
+      "hands-start": ["🟦", "화면 조작 시작"], "hands-stop": ["⏹", "화면 조작 종료"], "hands-read": ["👁", "화면 읽기"],
+      "hands-dump": ["👁", "화면 읽기"], "hands-click": ["👆", "누르기"], "hands-type": ["⌨️", "입력"], "hands-scroll": ["↕️", "스크롤"],
+      "hands-launch": ["🚀", "앱 열기"], "hands-run": ["▶️", "자동화 실행"], "hands-swipe": ["👉", "스와이프"], "hands-back": ["↩️", "뒤로"],
+      "hands-home": ["🏠", "홈"], "hands-status": ["📟", "조작 상태"], set: ["⚙️", "설정 변경"], settings: ["⚙️", "설정 확인"],
+      battery: ["🔋", "배터리"], notify: ["🔔", "알림 보내기"], "sms-send": ["✉️", "문자 보내기"], location: ["📍", "위치"],
+    };
+    const [ic, label] = map[a] || ["📱", "폰: " + a];
+    return { ic, label, detail: rest, phone: a };
+  }
+  const generic = {
+    terminal: ["⌘", "명령 실행"], web_search: ["🔎", "웹 검색"], web_extract: ["🌐", "웹 페이지 읽기"], browser_navigate: ["🌐", "브라우저"],
+    read_file: ["📄", "파일 읽기"], write_file: ["✏️", "파일 쓰기"], patch: ["✏️", "파일 수정"], search_files: ["🗂", "파일 찾기"],
+    memory: ["🧠", "기억"], skill_view: ["📘", "스킬 보기"], skill_manage: ["📘", "스킬 저장"], cronjob: ["⏰", "예약 작업"], todo: ["☑️", "할 일"],
+  };
+  const [ic, label] = generic[name] || ["🔧", name];
+  const detail = typeof cmd === "string" && cmd ? cmd.slice(0, 90) : (args && (args.query || args.url || args.path)) || "";
+  return { ic, label, detail: String(detail) };
+}
+
+/* ───────────── 화면 상태 ───────────── */
+const S = { ws: null, sid: null, rid: 0, pending: new Map(), cur: null, tools: new Map(), busy: false, hands: { on: false, steps: [] } };
+const msgs = $("msgs"), chat = $("chat");
+function scrollDown() { requestAnimationFrame(() => { chat.scrollTop = chat.scrollHeight; }); }
+function hideEmpty() { const e = $("empty"); if (e) e.remove(); }
+function addUser(text) { hideEmpty(); const d = document.createElement("div"); d.className = "msg user"; d.textContent = text; msgs.append(d); scrollDown(); }
+function aiNode() {
+  if (!S.cur) { hideEmpty(); S.cur = { el: document.createElement("div"), text: "" }; S.cur.el.className = "msg ai caret"; msgs.append(S.cur.el); }
+  return S.cur;
+}
+function aiDelta(t) { const c = aiNode(); c.text += t; c.el.innerHTML = md(c.text); c.el.classList.add("caret"); scrollDown(); }
+function aiSeal() { if (S.cur) { S.cur.el.classList.remove("caret"); if (!S.cur.text.trim()) S.cur.el.remove(); } S.cur = null; }
+function setBusy(b) {
+  S.busy = b; const s = $("send");
+  s.classList.toggle("stop", b); s.textContent = b ? "■" : "↑"; s.setAttribute("aria-label", b ? "멈추기" : "보내기");
+  s.disabled = !b && !$("input").value.trim();
+}
+
+function toolStart(p) {
+  aiSeal();
+  const d = describeTool(p.name, p.args || {});
+  const el = document.createElement("details"); el.className = "tool";
+  el.innerHTML = `<summary><span class="ti">${d.ic}</span><span class="tl"><b>${esc(d.label)}</b> <span>${esc(d.detail || p.preview || "")}</span></span><span class="ts run">실행 중</span></summary><pre></pre>`;
+  msgs.append(el); S.tools.set(p.tool_id, { el, d, t0: Date.now() }); scrollDown();
+  if (d.phone) phoneStep(d, "run");
+}
+function toolDone(p) {
+  const t = S.tools.get(p.tool_id); if (!t) return;
+  const out = p.result_text || p.summary || (typeof p.result === "string" ? p.result : JSON.stringify(p.result ?? "", null, 1));
+  const bad = /"ok"\s*:\s*false|error|denied|거부|실패/i.test(String(out).slice(0, 400)) && !/"ok"\s*:\s*true/.test(String(out).slice(0, 400));
+  const s = t.el.querySelector(".ts"); s.className = "ts " + (bad ? "bad" : "ok");
+  s.textContent = (bad ? "✕ " : "✓ ") + ((p.duration_s ?? (Date.now() - t.t0) / 1000)).toFixed(1) + "s";
+  t.el.querySelector("pre").textContent = String(out || "(출력 없음)").slice(0, 6000);
+  if (t.d.phone) phoneStep(t.d, bad ? "bad" : "ok", String(out || ""));
+}
+
+/* ───────────── 폰 패널: 도구 이벤트로 실시간 반영 ───────────── */
+function phoneStep(d, state, out) {
+  const H = S.hands;
+  if (d.phone === "hands-start" && state === "ok") { H.on = true; H.t0 = Date.now(); H.mins = parseInt(d.detail) || 10; H.steps = H.steps.slice(-1); }
+  if (d.phone === "hands-stop" && state !== "run") H.on = false;
+  if (out && /"session"\s*:\s*false/.test(out)) H.on = false;
+  if ((d.phone === "hands-read" || d.phone === "hands-dump") && out && state === "ok") $("outline").textContent = out.slice(0, 4000);
+  if (state === "run") H.steps.push({ ic: d.ic, label: d.label + (d.detail ? " " + d.detail.slice(0, 40) : ""), st: "run" });
+  else { const last = [...H.steps].reverse().find((x) => x.st === "run"); if (last) last.st = state; }
+  renderHands();
+}
+function renderHands() {
+  const H = S.hands;
+  $("hdot").className = "dot " + (H.on ? "on" : "");
+  $("hstate").textContent = H.on ? "Hermes 가 폰을 조작하는 중 · 사람 터치 잠김" : (H.steps.length ? "조작 끝 · 터치 다시 가능" : "대기 중");
+  const pct = H.on && H.t0 ? Math.min(100, ((Date.now() - H.t0) / (H.mins * 600)) ) : 0;
+  $("hbar").style.width = pct + "%";
+  $("hsteps").innerHTML = H.steps.slice(-12).map((s, i, a) =>
+    `<li class="${i === a.length - 1 && s.st === "run" ? "cur" : ""}">${s.st === "ok" ? "✓" : s.st === "bad" ? "✕" : "…"} ${s.ic} ${esc(s.label)}</li>`).join("");
+}
+setInterval(() => S.hands.on && renderHands(), 2000);
+
+/* ───────────── 승인 요청(서버 → 화면) ───────────── */
+function askApproval(id, p) {
+  aiSeal();
+  const el = document.createElement("div"); el.className = "ask";
+  el.innerHTML = `<h4>🔐 Hermes 가 실행 허락을 요청해요</h4><div>${esc(p.description || "")}</div><code>${esc(p.command || "")}</code>
+    <div class="row"><button class="btn pri" data-c="once">이번만 허용</button><button class="btn" data-c="session">이 대화에선 허용</button><button class="btn" data-c="deny">거부</button></div>`;
+  el.querySelectorAll("button").forEach((b) => b.onclick = () => {
+    reply(id, { choice: b.dataset.c }); el.classList.add("done");
+    el.querySelector(".row").innerHTML = `<span class="hint">${b.dataset.c === "deny" ? "거부함" : "허용함"}</span>`;
+  });
+  msgs.append(el); scrollDown();
+}
+
+/* ───────────── JSON-RPC over WebSocket (Hermes 공식 게이트웨이) ───────────── */
+function call(method, params = {}) {
+  if (DEMO) return Demo.call(method, params);
+  return new Promise((res, rej) => {
+    if (!S.ws || S.ws.readyState !== 1) return rej(new Error("not connected"));
+    const id = "f" + (++S.rid); S.pending.set(id, { res, rej });
+    S.ws.send(JSON.stringify({ jsonrpc: "2.0", id, method, params }));
+    setTimeout(() => { if (S.pending.has(id)) { S.pending.delete(id); rej(new Error("timeout: " + method)); } }, 120000);
+  });
+}
+function reply(id, result) { if (DEMO) return Demo.reply(id, result); S.ws && S.ws.send(JSON.stringify({ jsonrpc: "2.0", id, result })); }
+
+function onFrame(f) {
+  if (f.id != null && S.pending.has(f.id) && !f.method) {
+    const p = S.pending.get(f.id); S.pending.delete(f.id);
+    f.error ? p.rej(new Error(f.error.message || "error")) : p.res(f.result); return;
+  }
+  if (f.method === "event") return onEvent(f.params || {});
+  if (f.method && f.id != null) {                      // 서버가 묻는 질문
+    if (f.method === "approval") return askApproval(f.id, f.params || {});
+    S.ws.send(JSON.stringify({ jsonrpc: "2.0", id: f.id, error: { code: -32601, message: "Hermes Fold 에서 지원 안 함: " + f.method } }));
+  }
+}
+function onEvent(e) {
+  if (e.session_id && S.sid && e.session_id !== S.sid && e.type !== "gateway.ready") return;
+  const p = e.payload || {};
+  switch (e.type) {
+    case "message.delta": if (p.text) aiDelta(p.text); else aiSeal(); break;
+    case "tool.start": toolStart(p); break;
+    case "tool.complete": toolDone(p); break;
+    case "message.complete": {
+      if (!S.cur && typeof p.text === "string" && p.text && !p.response_reused) aiDelta(p.text);
+      if (p.status === "error" || p.error) { aiDelta("\n\n⚠️ " + (p.error || "오류")); }
+      aiSeal(); setBusy(false); loadSessions(); break;
+    }
+    case "request.cancel": break;
+  }
+}
+
+async function authParam() {
+  if (window.__HERMES_AUTH_REQUIRED__) {
+    const r = await fetch("/api/auth/ws-ticket", { method: "POST", credentials: "include" });
+    if (r.status === 401 || r.status === 403) { location.href = "/auth/login?next=" + encodeURIComponent(location.pathname); throw new Error("login"); }
+    if (!r.ok) throw new Error("ticket " + r.status);
+    return ["ticket", (await r.json()).ticket];
+  }
+  return ["token", window.__HERMES_SESSION_TOKEN__ || ""];
+}
+
+let retry = 0;
+async function connect() {
+  if (DEMO) { $("conn").className = "dot on"; $("model").textContent = "nemotron-3-ultra (demo)"; return Demo.boot(); }
+  $("conn").className = "dot wait";
+  try {
+    const [k, v] = await authParam();
+    const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/ws?${k}=${encodeURIComponent(v)}`);
+    S.ws = ws;
+    ws.onmessage = (m) => String(m.data).split("\n").filter(Boolean).forEach((l) => { try { onFrame(JSON.parse(l)); } catch (_) {} });
+    ws.onclose = () => { $("conn").className = "dot"; setBusy(false); setTimeout(connect, Math.min(15000, 1000 * 2 ** retry++)); };
+    ws.onopen = async () => {
+      retry = 0; $("conn").className = "dot on";
+      try { await call("client.capabilities", { server_requests: true }); } catch (_) {}
+      await loadSessions();
+      if (!S.sid) await newSession(); else await resume(S.sid);
+    };
+  } catch (e) { if (String(e.message) !== "login") setTimeout(connect, 3000); }
+}
+
+async function newSession() {
+  const r = await call("session.create", { title: "Hermes Fold" });
+  S.sid = r.session_id; S.tools.clear();
+  msgs.innerHTML = ""; msgs.append(emptyNode()); $("title").textContent = "새 대화";
+  if (r.info && (r.info.model || r.info.model_name)) $("model").textContent = r.info.model || r.info.model_name;
+  sessionStorage.setItem("fold.sid", S.sid);
+}
+async function resume(id) {
+  const r = await call("session.resume", { session_id: id });
+  S.sid = r.session_id || id; msgs.innerHTML = ""; S.cur = null;
+  for (const m of r.messages || []) {
+    if (m.role === "user" && m.text) addUser(m.text);
+    else if (m.role === "assistant" && m.text) { aiDelta(m.text); aiSeal(); }
+    else if (m.role === "tool") {
+      const d = describeTool(m.name, m.args || {});
+      const el = document.createElement("details"); el.className = "tool";
+      el.innerHTML = `<summary><span class="ti">${d.ic}</span><span class="tl"><b>${esc(d.label)}</b> <span>${esc(d.detail || "")}</span></span><span class="ts ok">✓</span></summary><pre>${esc(String(m.text || m.content || "").slice(0, 4000))}</pre>`;
+      msgs.append(el);
+    }
+  }
+  if (!msgs.children.length) msgs.append(emptyNode());
+  if (r.info && r.info.model) $("model").textContent = r.info.model;
+  sessionStorage.setItem("fold.sid", S.sid); scrollDown();
+}
+function emptyNode() { const d = document.createElement("div"); d.className = "empty"; d.id = "empty"; d.innerHTML = `<div class="big">무엇을 도와드릴까요?</div><div>폰 앱 조작, 설정 변경, 검색, 예약 작업까지 — 말로 시키면 됩니다.</div>`; return d; }
+
+async function loadSessions() {
+  let r; try { r = await call("session.list", { limit: 30 }); } catch (_) { return; }
+  const list = $("slist"); list.innerHTML = `<div class="slabel">최근 대화</div>`;
+  for (const s of (r.sessions || [])) {
+    const b = document.createElement("button"); b.className = "sitem" + (s.id === S.sid ? " on" : "");
+    b.innerHTML = `${esc(s.title || s.preview || "대화")}<small>${esc(s.preview || "")}</small>`;
+    b.onclick = () => { closeDrawers(); resume(s.id).then(() => { $("title").textContent = s.title || "대화"; loadSessions(); }); };
+    list.append(b);
+    if (s.id === S.sid && s.title) $("title").textContent = s.title;
+  }
+}
+
+async function send(text) {
+  text = (text ?? $("input").value).trim(); if (!text) return;
+  if (S.busy) return;
+  $("input").value = ""; autosize(); addUser(text); setBusy(true);
+  try { if (!S.sid) await newSession(); hideEmpty(); await call("prompt.submit", { session_id: S.sid, text }); }
+  catch (e) { aiDelta("⚠️ 보내지 못했어요: " + e.message); aiSeal(); setBusy(false); }
+}
+async function stop() { try { await call("session.interrupt", { session_id: S.sid }); } catch (_) {} setBusy(false); }
+
+/* ───────────── UI 연결 ───────────── */
+const input = $("input");
+function autosize() { input.style.height = "auto"; input.style.height = Math.min(160, input.scrollHeight) + "px"; $("send").disabled = !S.busy && !input.value.trim(); }
+input.addEventListener("input", autosize);
+input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing && matchMedia("(min-width:700px)").matches) { e.preventDefault(); send(); } });
+$("send").onclick = () => (S.busy ? stop() : send());
+$("chips").innerHTML = CHIPS.map((c) => `<button class="chip">${esc(c)}</button>`).join("");
+$("chips").querySelectorAll(".chip").forEach((b) => b.onclick = () => send(b.textContent));
+$("quick").innerHTML = QUICK.map(([i, t, p]) => `<button class="tog" data-p="${esc(p)}"><span>${i}</span><b>${esc(t)}</b></button>`).join("");
+$("quick").querySelectorAll(".tog").forEach((b) => b.onclick = () => { closeDrawers(); send(b.dataset.p); });
+$("newChat").onclick = () => { closeDrawers(); newSession().then(loadSessions); };
+function closeDrawers() { $("side").classList.remove("open"); $("phone").classList.remove("open"); $("scrim").classList.remove("on"); }
+$("openSide").onclick = () => { $("side").classList.add("open"); $("scrim").classList.add("on"); };
+$("openPhone").onclick = () => { $("phone").classList.add("open"); $("scrim").classList.add("on"); };
+$("closePhone").onclick = closeDrawers; $("scrim").onclick = closeDrawers;
+S.sid = sessionStorage.getItem("fold.sid");
+autosize(); renderHands();
+
+/* ───────────── 데모 모드 (?demo) — 서버 없이 화면 미리보기 ───────────── */
+const Demo = {
+  boot() {
+    this.sessions = [{ id: "d1", title: "다크 모드 켜기", preview: "설정 바꾸기" }, { id: "d2", title: "아침 날씨 브리핑", preview: "매일 06:50" }, { id: "d3", title: "계산기 테스트", preview: "12×34" }];
+    S.sid = "d1"; loadSessions();
+    if (new URLSearchParams(location.search).get("demo") === "run") setTimeout(() => send("계산기로 12×34 계산해줘"), 600);
+  },
+  call(m, p) {
+    if (m === "session.list") return Promise.resolve({ sessions: this.sessions });
+    if (m === "session.create") return Promise.resolve({ session_id: "d" + Date.now(), info: { model: "nemotron-3-ultra (demo)" } });
+    if (m === "session.resume") return Promise.resolve({ session_id: p.session_id, messages: [] });
+    if (m === "prompt.submit") { this.play(p.text); return Promise.resolve({ ok: true }); }
+    return Promise.resolve({});
+  },
+  reply(id, r) { if (id === "demo-ap" && r.choice !== "deny") this.cont && this.cont(); },
+  play() {
+    const ev = (type, payload, ms) => new Promise((r) => setTimeout(() => { onEvent({ type, session_id: S.sid, payload }); r(); }, ms));
+    const t = (i, name, cmd) => ({ tool_id: "t" + i, name, args: { command: cmd } });
+    (async () => {
+      await ev("message.delta", { text: "계산기를 열어서 직접 눌러볼게요." }, 400);
+      await ev("tool.start", t(1, "terminal", 'phone hands-start 3 org.fossify.math "계산기 12×34"'), 300);
+      await ev("tool.complete", { ...t(1, "terminal", 'phone hands-start 3 org.fossify.math "계산기 12×34"'), result_text: '{"ok":true,"minutes":3}', duration_s: 2.1 }, 900);
+      await ev("tool.start", t(2, "terminal", "phone hands-read"), 200);
+      await ev("tool.complete", { ...t(2, "terminal", "phone hands-read"), duration_s: 0.8, result_text: 'app: org.fossify.math  nodes: 24\n[3] TextView "0" #result\n  [16] TextView "1" #btn_1 {click}\n  [17] TextView "2" #btn_2 {click}\n  [11] TextView "×" #btn_multiply {click}\n  [18] TextView "3" #btn_3 {click}\n  [12] TextView "4" #btn_4 {click}\n  [23] TextView "=" #btn_equals {click}' }, 700);
+      await ev("tool.start", t(3, "terminal", `phone hands-run '[{"do":"click","match":"btn_1$"},…,{"do":"assert","match":"^408$"}]'`), 200);
+      await ev("tool.complete", { ...t(3, "terminal", "phone hands-run"), duration_s: 9.4, result_text: '{"ok":true,"done":7,"report":[…]}' }, 2200);
+      await ev("tool.start", t(4, "terminal", "phone hands-stop"), 200);
+      await ev("tool.complete", { ...t(4, "terminal", "phone hands-stop"), duration_s: 0.3, result_text: '{"ok":true}' }, 500);
+      for (const w of ["계산 결과는 **408** 이에요.\n\n", "- 12 × 34 = 408\n", "- 이 흐름을 레시피 `calc-mul` 로 저장해 둘까요?"]) await ev("message.delta", { text: w }, 260);
+      await ev("message.complete", { text: "", status: "complete" }, 200);
+    })();
+  },
+};
+connect();
+</script>
+</body>
+</html>

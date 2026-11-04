@@ -251,7 +251,7 @@ if [ -n "$BROWSER" ] && launch "$BROWSER"; then
       snap "browser-example"
       if [ $LOADED = 1 ]; then
         ok "⑥ 웹페이지 본문 읽기 ('This domain is for use…')"
-        if tap_el "$(T '^(More information|Learn more)')"; then
+        if tap_el "$(T '^(More information|Learn more|Find out more|IANA)')" 3; then   # 링크가 아래에 있으면 스크롤하며 찾기
           NEXT=0; for k in 1 2 3 4 5 6; do sleep 3; dump; has "$(T 'IANA|Internet Assigned Numbers|example domains')" && { NEXT=1; break; }; done
           snap "browser-link"
           [ $NEXT = 1 ] && ok "⑥ 웹페이지 링크 눌러 다음 페이지 이동 (iana.org)" || { bad "⑥ 링크 이동 확인"; show 25; }

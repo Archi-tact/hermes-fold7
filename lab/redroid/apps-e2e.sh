@@ -194,15 +194,19 @@ board_sig() {  # 화면 가운데(판 영역) 픽셀의 해시 — 상태바 시
   A exec-out screencap 2>/dev/null | python3 -c '
 import sys,hashlib,struct
 b=sys.stdin.buffer.read(); w,h=struct.unpack("<II",b[:8]); hdr=len(b)-w*h*4
-print(hashlib.md5(b[hdr+w*4*int(h*.30):hdr+w*4*int(h*.85)]).hexdigest())'
+print(hashlib.md5(b[hdr+w*4*int(h*.30):hdr+w*4*int(h*.85)]).hexdigest()[:12])' 2>>"$ART/board_sig.err"
 }
+score_sig() { dump; jq -r '[.nodes[] | (.text // "") | select(test("^[0-9]+$"))] | join(",")' <<<"$D"; }
 echo "== ⑤ 게임 2048 → 스와이프로 직접 플레이"
 if [ -n "$GAME" ] && launch "$GAME"; then
-  sleep 3; dismiss; show 15
+  sleep 3; dismiss
+  # 메뉴 화면이면 '새 게임' 누르기 (에이전트처럼 화면을 보고 판단)
+  if tap_el "$(T '^(START NEW GAME|New game|Play|Start|새 게임|시작)$')"; then echo "     ('새 게임' 누름)"; sleep 2; fi
+  dump; show 15
   snap "game-start"
   read -r SW SH < <(AS wm size | grep -oE '[0-9]+x[0-9]+' | tail -1 | tr 'x' ' ')
   GX=$((SW/2)); GY=$((SH*57/100)); R=$((SW/4))
-  MOVED=0; SWIPES=0; prev="$(board_sig)"
+  MOVED=0; SWIPES=0; prev="$(board_sig)"; echo "     판 해시 시작: '$prev'  숫자: $(score_sig)"
   for dir in up right down left up right down left left down; do
     case $dir in
       up)    a=($GX $((GY+R)) $GX $((GY-R))) ;;
@@ -213,12 +217,12 @@ if [ -n "$GAME" ] && launch "$GAME"; then
     r="$(ph "g$((++NC))" hands-swipe "${a[@]}" 250)"
     [ "$(jqv .ok "$r")" = true ] && SWIPES=$((SWIPES+1)) || echo "     swipe $dir → $r"
     sleep 0.6; cur="$(board_sig)"
-    if [ -n "$cur" ] && [ "$cur" != "$prev" ]; then MOVED=$((MOVED+1)); echo "     스와이프 $dir → 판 움직임"
+    if [ -n "$cur" ] && [ "$cur" != "$prev" ]; then MOVED=$((MOVED+1)); echo "     스와이프 $dir → 판 움직임 ($cur)"
     else echo "     스와이프 $dir → 변화 없음(그 방향으로 못 움직이는 판일 수 있음)"; fi
     prev="$cur"
   done
   snap "game-after"
-  echo "     스와이프 성공 $SWIPES/10, 판이 바뀐 횟수 $MOVED"
+  echo "     스와이프 성공 $SWIPES/10, 판이 바뀐 횟수 $MOVED, 끝 숫자: $(score_sig)"; head -3 "$ART/board_sig.err" 2>/dev/null
   [ $SWIPES -eq 10 ] && ok "⑤ 스와이프 제스처 10회 실행" || bad "⑤ 스와이프 실행 ($SWIPES/10)"
   [ $MOVED -ge 5 ] && ok "⑤ 게임 판이 실제로 움직임 ($MOVED/10회)" || bad "⑤ 게임 반응 ($MOVED/10회)"
 else bad "⑤ 2048 실행"; fi

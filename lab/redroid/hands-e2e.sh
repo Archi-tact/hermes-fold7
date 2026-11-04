@@ -25,7 +25,7 @@ ph()      { local n="$1"; shift; tx_run "$n" "$(ph_file "$n" "$@")" 150 >/dev/nu
 ph_bg()   { local n="$1"; shift; tx_start "$n" "$(ph_file "$n" "$@")"; }
 ph_out()  { AS cat "$TH/.lab/$1.log" 2>/dev/null; }
 focus()   { AS dumpsys window 2>/dev/null | grep -m1 -E 'mCurrentFocus|mFocusedWindow' | tr -d '\r'; }
-jqv()     { jq -r "$1" 2>/dev/null <<<"$2" | tail -1; }
+jqv()     { grep '^{' <<<"$2" | tail -1 | jq -r "$1" 2>/dev/null; }   # 마지막 JSON 줄만
 
 read -r SW SH < <(AS wm size | grep -oE '[0-9]+x[0-9]+' | tail -1 | tr 'x' ' ')
 DPI="$(AS wm density | grep -oE '[0-9]+' | tail -1)"
@@ -40,8 +40,9 @@ TOKEN=""
 for _ in $(seq 1 30); do TOKEN="$(AS cat /data/data/$PKG/files/token 2>/dev/null)"; [ -n "$TOKEN" ] && break; sleep 1; done
 [ -n "$TOKEN" ] && ok "접근성 서비스 시작(토큰 생성)" || bad "접근성 서비스 시작"
 printf '%s' "$TOKEN" > "$WORK/tok"; push_termux "$WORK/tok" ".hermes-bridge/hands.token" 600
-S="$(ph st0 hands-status)"; echo "   $S"
-[ "$(jqv .ok "$S")" = true ] && ok "브리지 ↔ 앱 연결 (토큰 인증)" || bad "브리지 ↔ 앱 연결"
+for k in $(seq 1 20); do S="$(ph "st0$k" hands-status)"; [ "$(jqv .ok "$S")" = true ] && break; sleep 2; done   # 소켓 열릴 때까지
+echo "   $S"
+[ "$(jqv .ok "$S")" = true ] && ok "브리지 ↔ 앱 연결 (토큰 인증)" || { bad "브리지 ↔ 앱 연결"; AS logcat -d -s HermesHands | tail -25; AS dumpsys accessibility | grep -iE 'hermes|Bound|Enabled' | head -10; }
 
 rec_start "$ART/frames"
 trap 'rec_stop "$ART/frames"; rm -rf "$WORK"' EXIT

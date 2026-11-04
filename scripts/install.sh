@@ -29,6 +29,7 @@ mkdir -p "$HOME/.hermes-bridge"; echo "$MODE" > "$HOME/.hermes-bridge/mode"
 say "3/6 폰 기능 브리지 + 보안 설정"
 bash scripts/30-phone-bridge.sh
 HERMES_MODE="$MODE" bash scripts/20-harden.sh
+HERMES_MODE="$MODE" bash scripts/25-phone-persona.sh   # 항상 한국어 · 폰 기능은 phone 명령으로 · 보안 우회 제안 금지
 
 say "4/6 부팅 자동시작 (Termux:Boot)"
 bash scripts/50-autostart.sh "$MODE"

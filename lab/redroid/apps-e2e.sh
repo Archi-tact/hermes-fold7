@@ -54,7 +54,9 @@ dismiss()  {  # 첫 실행 팝업(안내·권한·평가 요청 등) 닫기
 # ---------- 0. 실제 앱 설치 (F-Droid 공식 저장소) ----------
 fdroid_install() {  # fdroid_install <package>
   local p="$1" j vc f="$WORK/$1.apk"
-  local C=(curl -fsSL --retry 6 --retry-delay 5 --retry-all-errors -m 300)
+  local C=(curl -fsSL --retry 5 --retry-delay 20 --retry-all-errors -m 300)
+  sleep "${FDROID_GAP:-0}"; FDROID_GAP=15             # F-Droid 요청 제한(연속 요청 시 502/429) 회피
+  echo "     F-Droid $p: API HTTP $(curl -s -o /dev/null -w '%{http_code}' "https://f-droid.org/api/v1/packages/$p")"
   # 1순위: F-Droid API / 2순위(API 장애 시): 앱 소개 페이지에 있는 APK 링크
   j="$("${C[@]}" "https://f-droid.org/api/v1/packages/$p" 2>/dev/null)"
   vcs="$(jq -r '.suggestedVersionCode, (.packages[].versionCode)' <<<"$j" 2>/dev/null)"
@@ -100,6 +102,11 @@ if launch com.android.settings; then
   if tap_el "$(T '^(Display|디스플레이)')" 4; then
     sleep 1
     if tap_el "$(T '^(Dark theme|Dark mode|다크 모드|어두운 테마)')" 3; then
+      sleep 1; dump
+      # 다크 모드 상세 화면이면 'Use Dark theme' 스위치까지 누름 (에이전트처럼 화면을 보고 판단)
+      if has '(.checked == false) and ((.id // "") | test("switch"))'; then
+        tap_el "$(T '^(Use Dark theme|다크 모드 사용|어두운 테마 사용)')" || tap_el '(.checked == false) and ((.id // "") | test("switch"))'
+      fi
       sleep 2; snap "settings-dark"
       AS cmd uimode night 2>/dev/null | grep -qi 'yes' && ok "① 다크 모드 켜짐 (시스템 설정 확인)" \
         || { bad "① 다크 모드 (설정값 안 바뀜: $(AS cmd uimode night 2>/dev/null))"; dump; show; }
@@ -146,7 +153,15 @@ else bad "③ 메모 실행"; fi
 # ---------- ④ 위키백과: 'Seoul' 검색해서 문서 열기 (인터넷 필요) ----------
 echo "== ④ 위키백과 → 'Seoul' 검색 → 문서 열기"
 if launch org.wikipedia; then
-  sleep 2; dismiss; show 25
+  sleep 2
+  for k in 1 2 3 4 5 6 7; do   # 첫 실행 안내 화면 넘기기 (Skip / Forward / Get started …)
+    dump; has "$(T '^(Search Wikipedia|위키백과 검색)')" && break
+    i="$(idx "$(T '^(Skip|Get started|Continue|Done|Forward|건너뛰기|시작하기|계속)$')")"
+    [ -n "$i" ] || i="$(idx "$(T '^(OK|Got it|Not now|No thanks|Close|Dismiss|확인|닫기|나중에)$')")"
+    [ -n "$i" ] || break
+    echo "     (안내 화면: $(jq -r ".nodes[$i].text // .nodes[$i].desc" <<<"$D") 누름)"; click_i "$i"; sleep 1.5
+  done
+  show 25
   if tap_el "$(T '^(Search Wikipedia|위키백과 검색|Search)')" 1; then
     sleep 1
     if find_el '.edit == true'; then

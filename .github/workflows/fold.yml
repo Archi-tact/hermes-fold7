@@ -59,11 +59,8 @@ jobs:
       - name: PC Hermes Desktop 원격 경로 (토큰)
         shell: bash
         run: |
-          HB="$(readlink -f "$(command -v hermes)")"; HPY="$(dirname "$HB")/python"
-          [ -x "$HPY" ] || HPY="$(head -1 "$HB" | sed 's/^#!//; s/ .*//')"          # 런처 shebang 의 venv 파이썬
-          "$HPY" -c 'import websockets' 2>/dev/null || HPY="$(ls -d "$HOME"/.hermes/hermes-agent/venv/bin/python "$HOME"/.hermes/hermes-agent/.venv/bin/python 2>/dev/null | head -1)"
-          "$HPY" -c 'import websockets' 2>/dev/null || { python3 -m pip install -q --user websockets; HPY=python3; }
-          echo "python: $HPY"; "$HPY" -c 'import websockets; print("websockets", websockets.__version__)'
+          python3 -m venv "$RUNNER_TEMP/wsenv" && "$RUNNER_TEMP/wsenv/bin/pip" install -q websockets==15.0.1
+          HPY="$RUNNER_TEMP/wsenv/bin/python"
           "$HPY" lab/fold/desktop-remote.py "http://$TS_IP:9130" "$(cat "$HOME/.hermes-fold-srv/desktop.token")" | tee "$ART_DIR/desktop-result.txt"
       - name: 폰 화면 종단 테스트 (Playwright, 실제 모델)
         if: always()

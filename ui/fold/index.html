@@ -274,7 +274,9 @@ function toolStart(p) {
 function toolDone(p) {
   const t = S.tools.get(p.tool_id); if (!t) return;
   const out = p.result_text || p.summary || (typeof p.result === "string" ? p.result : JSON.stringify(p.result ?? "", null, 1));
-  const bad = /"ok"\s*:\s*false|error|denied|거부|실패/i.test(String(out).slice(0, 400)) && !/"ok"\s*:\s*true/.test(String(out).slice(0, 400));
+  const head = String(out).slice(0, 600);
+  // 실패 판단: ok:false, 0 이 아닌 exit_code, 값이 있는 error 필드, 'Error:' 로 시작 (error:null 같은 빈 필드는 성공)
+  const bad = /"ok"\s*:\s*false|"exit_code"\s*:\s*-?[1-9]|"error"\s*:\s*"[^"]|"status"\s*:\s*"(error|failed)"/i.test(head) || /^\s*(Error|❌|Traceback)/.test(head);
   const s = t.el.querySelector(".ts"); s.className = "ts " + (bad ? "bad" : "ok");
   s.textContent = (bad ? "✕ " : "✓ ") + ((p.duration_s ?? (Date.now() - t.t0) / 1000)).toFixed(1) + "s";
   t.el.querySelector("pre").textContent = String(out || "(출력 없음)").slice(0, 6000);

@@ -220,7 +220,10 @@ if [ -n "$GAME" ] && launch "$GAME"; then
   dump; show 15
   snap "game-start"
   read -r SW SH < <(AS wm size | grep -oE '[0-9]+x[0-9]+' | tail -1 | tr 'x' ' ')
-  GX=$((SW/2)); GY=$((SH*57/100)); R=$((SW/4))
+  # 판 위치: 화면 구조에서 타일(글자 없는 Button)들의 경계를 합쳐 계산 (에이전트가 하는 방식)
+  read -r BL BT BR BB < <(jq -r '[.nodes[] | select(.cls == "Button") | .b] | if length > 0 then [ (map(.[0])|min), (map(.[1])|min), (map(.[2])|max), (map(.[3])|max) ] | map(tostring) | join(" ") else "" end' <<<"$D")
+  if [ -n "${BL:-}" ]; then GX=$(( (BL+BR)/2 )); GY=$(( (BT+BB)/2 )); R=$(( (BR-BL)/3 )); echo "     판 영역 [$BL,$BT,$BR,$BB] → 중심 ($GX,$GY) 반경 $R"
+  else GX=$((SW/2)); GY=$((SH*57/100)); R=$((SW/4)); fi
   MOVED=0; SWIPES=0; prev="$(board_sig)"; echo "     판 해시 시작: '$prev'  숫자: $(score_sig)"
   for dir in up right down left up right down left left down; do
     case $dir in
@@ -229,7 +232,7 @@ if [ -n "$GAME" ] && launch "$GAME"; then
       left)  a=($((GX+R)) $GY $((GX-R)) $GY) ;;
       right) a=($((GX-R)) $GY $((GX+R)) $GY) ;;
     esac
-    r="$(ph "g$((++NC))" hands-swipe "${a[@]}" 250)"
+    r="$(ph "g$((++NC))" hands-swipe "${a[@]}" 180)"
     [ "$(jqv .ok "$r")" = true ] && SWIPES=$((SWIPES+1)) || echo "     swipe $dir → $r"
     sleep 0.6; cur="$(board_sig)"
     if [ -n "$cur" ] && [ "$cur" != "$prev" ]; then MOVED=$((MOVED+1)); echo "     스와이프 $dir → 판 움직임 ($cur)"
@@ -273,14 +276,15 @@ if [ -n "$BROWSER" ] && launch "$BROWSER"; then
         for k in 1 2 3 4 5 6; do sleep 3; dump; has "$(T 'World Wide Web|WorldWideWeb|hypermedia')" && break; done
         show 20
         # 페이지 안 링크(브라우저 자체 버튼이 아닌 = 뷰 id 없는 클릭 요소)를 찾아 누르고, 주소가 바뀌었는지 확인
-        URL0="$(jq -r '[.nodes[] | select(.edit == true and ((.id // "") | test("search|url|address"; "i")))][0].text // empty' <<<"$D")"
+        PT='[.nodes[] | select(.cls == "WebView")][0] | (.text // .desc // "")'
+        URL0="$(jq -r "$PT" <<<"$D")"          # 지금 페이지 제목 (주소창은 도메인만 보여서 제목으로 비교)
         LINKF='(.click == true) and ((.id // "") == "") and ((.text // .desc // "") | test("out there|Help|Software|Bibliography|People|History|Technical|Summary"; "i"))'
         if tap_el "$LINKF" 3; then
           NEXT=0; for k in 1 2 3 4 5 6; do sleep 3; dump
-            U="$(jq -r '[.nodes[] | select(.edit == true and ((.id // "") | test("search|url|address"; "i")))][0].text // empty' <<<"$D")"
+            U="$(jq -r "$PT" <<<"$D")"
             [ -n "$U" ] && [ "$U" != "$URL0" ] && { NEXT=1; break; }; done
           snap "browser-link"
-          [ $NEXT = 1 ] && ok "⑥ 웹페이지 링크 눌러 다음 페이지 이동 ($URL0 → $U)" || { bad "⑥ 링크 이동 확인 (주소 그대로: $URL0)"; show 25; }
+          [ $NEXT = 1 ] && ok "⑥ 웹페이지 링크 눌러 다음 페이지 이동 ('$URL0' → '$U')" || { bad "⑥ 링크 이동 확인 (페이지 그대로: $URL0)"; show 25; }
         else bad "⑥ 페이지 안 링크 못 찾음"; jq -r '.nodes[] | select(.click == true) | "     [\(.i)] \(.cls) \(.text // .desc // "") #\(.id // "")"' <<<"$D" | head -20; fi
       else bad "⑥ 페이지 로드 확인"; show 25; fi
     else bad "⑥ 주소 입력"; fi

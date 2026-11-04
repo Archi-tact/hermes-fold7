@@ -29,10 +29,15 @@ apt-get install -y --no-install-recommends ca-certificates curl git sudo xz-util
 curl -fsSL https://hermes-agent.nousresearch.com/install.sh -o /tmp/hermes-install.sh
 echo "---- install.sh sha256: $(sha256sum /tmp/hermes-install.sh | cut -d" " -f1)"
 if ! bash /tmp/hermes-install.sh --non-interactive --skip-browser </dev/null; then   # 설정 마법사·게이트웨이 질문 없이 (API 키는 Hermes Fold 화면에서)
+  # 본체는 깔렸고 마지막 "게이트웨이 백그라운드 서비스(systemd)" 등록만 실패한 경우 → proot 엔 systemd 가 없으니 정상
+  if [ -x "$HOME/.local/bin/hermes" ] && "$HOME/.local/bin/hermes" --version >/dev/null 2>&1; then
+    echo "---- 참고: Hermes 본체 설치 완료. (게이트웨이 systemd 서비스 등록 실패는 proot 에서 정상 — 무시)"
+  else
   echo "---- 진단: 남은 ANDROID/TERMUX 환경변수"; env | grep -iE "android|termux|^prefix=" || echo "(없음)"
   echo "---- 진단: /system /apex 존재"; ls -d /system /apex 2>&1
   echo "---- 진단: uv 관리 Python"; ls ~/.local/share/uv/python 2>&1
   exit 1
+  fi
 fi
 '
 

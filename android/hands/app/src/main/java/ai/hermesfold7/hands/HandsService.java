@@ -631,9 +631,10 @@ public class HandsService extends AccessibilityService {
         GestureDescription g = new GestureDescription.Builder().addStroke(stroke).build();
         main.post(() -> {
             boolean sent = dispatchGesture(g, new GestureResultCallback() {
-                @Override public void onCompleted(GestureDescription d) { result[0] = true; done.countDown(); }
-                @Override public void onCancelled(GestureDescription d) { done.countDown(); }
+                @Override public void onCompleted(GestureDescription d) { Log.i(TAG, "gesture completed"); result[0] = true; done.countDown(); }
+                @Override public void onCancelled(GestureDescription d) { Log.w(TAG, "gesture cancelled"); done.countDown(); }
             }, null);
+            Log.i(TAG, "gesture dispatched=" + sent + " overlayAttached=" + (overlay != null && overlay.isAttachedToWindow()));
             if (!sent) done.countDown();
         });
         done.await(timeoutMs, TimeUnit.MILLISECONDS);

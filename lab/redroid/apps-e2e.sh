@@ -202,6 +202,16 @@ b=sys.stdin.buffer.read(); w,h=struct.unpack("<II",b[:8]); hdr=len(b)-w*h*4
 print(hashlib.md5(b[hdr+w*4*int(h*.30):hdr+w*4*int(h*.85)]).hexdigest()[:12])' 2>>"$ART/board_sig.err"
 }
 score_sig() { dump; jq -r '[.nodes[] | (.text // "") | select(test("^[0-9]+$"))] | join(",")' <<<"$D"; }
+echo "== ⑤-진단: 좌표 터치(제스처)가 앱에 전달되는지"
+if launch org.fossify.math; then
+  for k in 1 2 3; do ph "gc$k" hands-click "id:org.fossify.math:id/btn_clear" >/dev/null; done
+  dump; read -r L9 T9 R9 B9 < <(jq -r '[.nodes[] | select((.id // "") | test("btn_9$"))][0].b | map(tostring) | join(" ")' <<<"$D")
+  r="$(ph gt1 hands-tap $(( (L9+R9)/2 )) $(( (T9+B9)/2 )))"; sleep 1; dump
+  RES9="$(jq -r '[.nodes[] | select((.id // "") | test("result$"))][0].text // empty' <<<"$D")"
+  echo "     좌표 탭(9 버튼) 응답 $(grep '^{' <<<"$r" | tail -1) → 결과 칸 '$RES9'"
+  [[ "$RES9" == *9* ]] && ok "⑤ 좌표 탭이 앱에 전달됨 (계산기 9)" || bad "⑤ 좌표 탭 전달 안 됨 (결과 '$RES9')"
+fi
+AS logcat -d -s HermesHands | grep -iE 'gesture|overlay|cancel' | tail -5 | sed 's/^/     log: /'
 echo "== ⑤ 게임 2048 → 스와이프로 직접 플레이"
 if [ -n "$GAME" ] && launch "$GAME"; then
   sleep 3; dismiss
@@ -256,9 +266,15 @@ if [ -n "$BROWSER" ] && launch "$BROWSER"; then
       snap "browser-example"
       if [ $LOADED = 1 ]; then
         ok "⑥ 웹페이지 본문 읽기 ('This domain is for use…')"
+        # 링크가 있는 고정 페이지(세계 최초 웹사이트)로 이동 → 링크 누르기
+        dump; I="$(idx '.edit == true and ((.id // "") | test("search|url|address"; "i"))')"
+        [ -n "$I" ] && click_i "$I" && sleep 1 && dump && I="$(idx '.edit == true and ((.id // "") | test("search|url|address"; "i"))')"
+        [ -n "$I" ] && type_i "$I" "https://info.cern.ch/hypertext/WWW/TheProject.html" enter
+        for k in 1 2 3 4 5 6; do sleep 3; dump; has "$(T 'World Wide Web|WorldWideWeb|hypermedia')" && break; done
+        show 20
         # 페이지 안 링크(브라우저 자체 버튼이 아닌 = 뷰 id 없는 클릭 요소)를 찾아 누르고, 주소가 바뀌었는지 확인
         URL0="$(jq -r '[.nodes[] | select(.edit == true and ((.id // "") | test("search|url|address"; "i")))][0].text // empty' <<<"$D")"
-        LINKF='(.click == true) and ((.id // "") == "") and ((.text // .desc // "") | test("^(More information|Learn more|Find out more|IANA)|example|domain|iana"; "i"))'
+        LINKF='(.click == true) and ((.id // "") == "") and ((.text // .desc // "") | test("out there|Help|Software|Bibliography|People|History|Technical|Summary"; "i"))'
         if tap_el "$LINKF" 3; then
           NEXT=0; for k in 1 2 3 4 5 6; do sleep 3; dump
             U="$(jq -r '[.nodes[] | select(.edit == true and ((.id // "") | test("search|url|address"; "i")))][0].text // empty' <<<"$D")"

@@ -4,6 +4,15 @@
     <!-- 127.0.0.1 로컬 소켓(토큰 인증)으로 Termux의 phone-bridge 와 통신 -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Android 11+ 패키지 가시성: 런처 앱 목록이 보여야 hands-launch 로 앱을 실행할 수 있음
+         (QUERY_ALL_PACKAGES 대신 '실행 가능한 앱'만 보이도록 최소 범위로 선언) -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
     <application
         android:label="@string/app_name"
         android:allowBackup="false"

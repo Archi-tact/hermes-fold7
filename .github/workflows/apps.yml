@@ -1,0 +1,71 @@
+# 실제 앱 조작 테스트: F-Droid 앱(계산기·메모·위키백과) + 설정을 Hermes Hands 로 조작 (녹화)
+#   결과 GIF: 실행 페이지 Summary (apps-results 브랜치)
+name: apps
+on:
+  workflow_dispatch:
+  push:
+    paths: ["android/**", "bridge/**", "lab/redroid/apps-e2e.sh", "lab/redroid/lib.sh", ".github/workflows/apps.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "17" }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: "8.10.2" }
+      - name: APK 빌드
+        run: gradle -p android/hands --no-daemon assembleRelease
+      - name: 결과 정리
+        run: |
+          cp android/hands/app/build/outputs/apk/release/app-release.apk hermes-hands.apk
+          sha256sum hermes-hands.apk | tee hermes-hands.apk.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hermes-hands-apk
+          path: |
+            hermes-hands.apk
+            hermes-hands.apk.sha256
+
+  e2e:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: write      # 결과 GIF 게시(apps-results 브랜치)
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      ART_DIR: ${{ github.workspace }}/lab/redroid/artifacts-apps
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: hermes-hands-apk }
+      - name: 안드로이드(redroid) 기동
+        run: sudo -E LAB_CI=1 REDROID_VERSION=14.0.0_64only REDROID_FALLBACKS="13.0.0_64only" REDROID_W=1080 REDROID_H=1920 REDROID_DPI=420 bash lab/redroid/setup-server.sh
+      - name: Termux + 폰 브리지 설치 (Hermes 본체 없이)
+        run: sudo -E PLAN=none bash lab/redroid/install-termux.sh
+      - name: 실제 앱 조작 테스트 (녹화)
+        timeout-minutes: 30
+        shell: bash
+        run: |
+          mkdir -p "$ART_DIR"
+          sudo -E bash lab/redroid/apps-e2e.sh "$PWD/hermes-hands.apk" | tee "$ART_DIR/e2e-result.txt"
+      - name: 화면 GIF → 실행 결과 페이지
+        if: always()
+        env:
+          RESULTS_BRANCH: apps-results
+          RESULTS_TITLE: "📱 실제 앱 조작 — 설정 · 계산기 · 메모 · 위키백과"
+        run: |
+          command -v ffmpeg >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg; }
+          sudo -E bash lab/redroid/publish-results.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: apps-e2e
+          path: lab/redroid/artifacts-apps/
+          if-no-files-found: ignore

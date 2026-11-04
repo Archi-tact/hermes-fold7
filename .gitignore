@@ -2,3 +2,4 @@ lab/redroid/secrets.env
 lab/redroid/last-screenshot.png
 *.tar.gz
 lab/redroid/artifacts/
+lab/redroid/artifacts-apps/

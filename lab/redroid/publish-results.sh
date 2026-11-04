@@ -3,7 +3,7 @@
 #   CI 전용. 결과 이미지는 'lab-results' 브랜치에 최신 1회분만 보관(강제 push)하고 커밋 SHA로 링크한다.
 set -euo pipefail
 LAB="$(cd "$(dirname "$0")" && pwd)"
-ART="$LAB/artifacts"
+ART="${ART_DIR:-$LAB/artifacts}"
 [ -d "$ART" ] || { echo "artifacts 없음"; exit 0; }
 SUMMARY="${GITHUB_STEP_SUMMARY:-/dev/stdout}"
 BRANCH="${RESULTS_BRANCH:-lab-results}"

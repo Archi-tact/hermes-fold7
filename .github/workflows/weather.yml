@@ -1,0 +1,70 @@
+# 날씨 브리핑 — Hermes Agent(NVIDIA Nemotron) 로 매일 아침 날씨를 웹에서 찾아 요약
+#   준비: 저장소 Settings → Secrets → Actions → NVIDIA_API_KEY (build.nvidia.com 의 nvapi-...)
+#   결과: 실행 페이지 Summary 에 브리핑 표시
+#   폰에서 같은 자동화: scripts/60-weather-brief.sh
+name: weather
+on:
+  workflow_dispatch:
+    inputs:
+      city:
+        description: "도시"
+        default: "서울"
+  schedule:
+    - cron: "47 21 * * *"   # 매일 06:47 KST (21:47 UTC)
+
+permissions:
+  contents: read
+
+jobs:
+  brief:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+      NVIDIA_MODEL: nvidia/nemotron-3-ultra-550b-a55b
+      WEATHER_CITY: ${{ inputs.city || '서울' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Hermes 설치 (공식 install.sh, 비대화형)
+        run: |
+          curl -fsSL https://hermes-agent.nousresearch.com/install.sh -o "$RUNNER_TEMP/install.sh"
+          echo "install.sh sha256: $(sha256sum "$RUNNER_TEMP/install.sh" | cut -d' ' -f1)"
+          bash "$RUNNER_TEMP/install.sh" --non-interactive --skip-browser --skip-computer-use
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: 모델 설정 (NVIDIA)
+        run: |
+          hermes --version
+          hermes config set model.provider nvidia
+          hermes config set model.default "$NVIDIA_MODEL"
+          if [ -n "$NVIDIA_API_KEY" ]; then
+            hermes config set NVIDIA_API_KEY "$NVIDIA_API_KEY" >/dev/null
+            echo "HAS_KEY=1" >> "$GITHUB_ENV"
+          else
+            echo "::warning::NVIDIA_API_KEY 시크릿이 없어 설치·작업 등록까지만 검증합니다"
+            echo "HAS_KEY=0" >> "$GITHUB_ENV"
+          fi
+
+      - name: 모델 연결 확인
+        if: env.HAS_KEY == '1'
+        run: timeout 300 hermes chat -q "연결 테스트입니다. 'OK' 한 단어만 답하세요." | tail -5
+
+      - name: 날씨 브리핑 작업 등록 + 지금 실행
+        shell: bash
+        run: |
+          RUN_NOW="$HAS_KEY" bash scripts/60-weather-brief.sh 2>&1 | tee "$RUNNER_TEMP/brief.log"
+
+      - name: 결과를 실행 페이지에 표시
+        if: always()
+        run: |
+          {
+            echo "## ☀️ 날씨 브리핑 (${WEATHER_CITY}) — Hermes + ${NVIDIA_MODEL}"
+            if [ "$HAS_KEY" = 1 ]; then
+              f="$(ls -t "$HOME"/.hermes/cron/output/*/* 2>/dev/null | head -1 || true)"
+              if [ -n "$f" ]; then echo; cat "$f"; else echo; echo "출력 파일이 없습니다. 로그를 확인하세요."; fi
+            else
+              echo; echo "NVIDIA_API_KEY 시크릿을 넣으면 실제 브리핑이 여기에 표시됩니다. (설치·작업 등록은 검증됨)"
+            fi
+            echo; echo "<details><summary>실행 로그</summary>"; echo; echo '```'; tail -80 "$RUNNER_TEMP/brief.log" 2>/dev/null; echo '```'; echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"

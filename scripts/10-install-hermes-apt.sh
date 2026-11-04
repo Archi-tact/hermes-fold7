@@ -40,7 +40,7 @@ pkg install -y hermes-agent
 
 echo
 hermes --version || { echo "❌ hermes 실행 실패 → Plan B를 사용하세요."; exit 1; }
-hermes doctor || true
+hermes doctor </dev/null || true          # 설정 마법사가 뜨지 않게 (API 키는 Hermes Fold 화면에서)
 
 cat <<'EOF'
 

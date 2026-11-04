@@ -10,6 +10,7 @@ import android.graphics.Path;
 import android.graphics.PixelFormat;
 import android.graphics.Rect;
 import android.graphics.drawable.GradientDrawable;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -435,8 +436,18 @@ public class HandsService extends AccessibilityService {
         Bundle args = new Bundle();
         args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text);
         boolean done = n.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args);
+        boolean entered = false;
+        if (done && q.optBoolean("enter", false)) {          // 주소창·검색창: 입력 후 '이동/검색' 키
+            Thread.sleep(Math.min(stepMs, 600));
+            setStep("입력 후 Enter");
+            if (Build.VERSION.SDK_INT >= 30) {
+                n.refresh();
+                entered = n.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.getId());
+            }
+            if (!entered) return err("enter failed (Android 11 이상 필요)");
+        }
         afterStep();
-        return done ? ok() : err("set text failed");
+        return done ? ok().put("entered", entered) : err("set text failed");
     }
 
     private JSONObject scroll(JSONObject q) throws Exception {

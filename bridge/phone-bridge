@@ -197,7 +197,8 @@ case "$ACTION" in
   hands-stop)    hands stop ;;
   hands-dump)    hands dump ;;
   hands-click)   need 1 "INDEX | text:글자 | id:뷰ID"; hands click "$(node_sel "$(arg 0)")" ;;
-  hands-type)    need 2 "INDEX TEXT"; int "$(arg 0)"; hands type "$(jq -cn --argjson i "$(arg 0)" --arg v "$(arg 1)" '{i:$i, value:$v}')" ;;
+  hands-type)    need 2 "INDEX TEXT [enter]"; int "$(arg 0)"; ent=false; [ "${ARGS[2]:-}" = enter ] && ent=true
+                 hands type "$(jq -cn --argjson i "$(arg 0)" --arg v "$(arg 1)" --argjson e "$ent" '{i:$i, value:$v, enter:$e}')" ;;
   hands-scroll)  dir="${ARGS[0]:-down}"; [[ "$dir" =~ ^(up|down)$ ]] || die "up|down"
                  if [ -n "${ARGS[1]:-}" ]; then int "$(arg 1)"; hands scroll "$(jq -cn --arg d "$dir" --argjson i "$(arg 1)" '{dir:$d, i:$i}')"
                  else hands scroll "$(jq -cn --arg d "$dir" '{dir:$d}')"; fi ;;

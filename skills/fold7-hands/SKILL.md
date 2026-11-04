@@ -44,7 +44,7 @@ phone hands-dump                              # verify the screen changed as exp
 `hands-dump` returns `nodes`: `{i, cls, text?, desc?, id?, b:[left,top,right,bottom], click?, edit?, scroll?, checked?, pw?}`.
 - Pick nodes by meaning (text/desc/id), not by position. Indexes are only valid for the latest dump: dump again after every action that changes the screen.
 - `phone hands-click text:디스플레이` or `phone hands-click id:com.app:id/search` also work.
-- `phone hands-type <i> "텍스트"` sets text on an editable node (`edit: true`).
+- `phone hands-type <i> "텍스트"` sets text on an editable node (`edit: true`). Add `enter` as a third argument to submit (address bar, search box): `phone hands-type 3 "날씨" enter`.
 - `phone hands-scroll down [i]` / `up` scrolls a list; dump again to see new items.
 - `phone hands-back`, `phone hands-home`, `phone hands-wait 1500` (let content load).
 - `phone hands-tap X Y` / `phone hands-swipe X1 Y1 X2 Y2 [ms]` only when no suitable node exists

@@ -2,7 +2,7 @@
 # lab/redroid/apps-e2e.sh — 실제 앱을 Hermes Hands 로 조작하는 시나리오 테스트 (+ 녹화)
 #   에이전트가 쓰는 것과 똑같은 명령(phone hands-*)만 사용: 화면 읽기 → 요소 찾기 → 누르기/입력 → 결과 확인
 #   시나리오: ① 설정 다크 모드 켜기 ② 계산기 12+34 ③ 메모 앱에 메모 쓰고 다시 열어 확인 ④ 위키백과 검색
-#             ⑤ 게임 2048 — 버튼이 아닌 직접 스와이프 조작
+#             ⑤ 게임 2048 — 버튼이 아닌 직접 스와이프 조작  ⑥ 인터넷 브라우저 — 주소 입력·이동·링크 누르기
 #   전제: setup-server.sh, install-termux.sh(PLAN=none) 완료, Hermes Hands APK 경로 = $1
 set -u
 LAB="$(cd "$(dirname "$0")" && pwd)"
@@ -40,7 +40,7 @@ find_el() {  # find_el <jq필터> [스크롤횟수] → I
 }
 click_i()  { local r; r="$(ph "c$((++NC))" hands-click "$1")"; [ "$(jqv .ok "$r")" = true ] || { echo "     click $1 → $r"; return 1; }; }
 tap_el()   { find_el "$1" "${2:-0}" && click_i "$I"; }
-type_i()   { local r; r="$(ph "t$((++NC))" hands-type "$1" "$2")"; [ "$(jqv .ok "$r")" = true ] || { echo "     type → $r"; return 1; }; }
+type_i()   { local r; r="$(ph "t$((++NC))" hands-type "$@")"; [ "$(jqv .ok "$r")" = true ] || { echo "     type → $r"; return 1; }; }
 launch()   { local r; r="$(ph "l$((++NC))" hands-launch "$1")"; sleep 2; [ "$(jqv .ok "$r")" = true ] || { echo "     launch → $r"; return 1; }; }
 dismiss()  {  # 첫 실행 팝업(안내·권한·평가 요청 등) 닫기
   local k i
@@ -78,6 +78,9 @@ CANDS="$(curl -fsSL -m 60 'https://search.f-droid.org/?q=2048&lang=en' 2>/dev/nu
 echo "     F-Droid 검색 '2048' → $(echo $CANDS)"
 for p in $CANDS; do fdroid_install "$p" && { GAME="$p"; break; }; done
 [ -n "$GAME" ] && ok "앱 설치: 게임 $GAME" || bad "앱 설치: 2048 게임"
+BROWSER=""  # 시스템 WebView 기반 가벼운 오픈소스 브라우저 → 안 되면 Firefox 계열
+for p in acr.browser.lightning com.stoutner.privacybrowser.standard org.mozilla.fennec_fdroid; do fdroid_install "$p" && { BROWSER="$p"; break; }; done
+[ -n "$BROWSER" ] && ok "앱 설치: 브라우저 $BROWSER" || bad "앱 설치: 브라우저"
 A install -r "$APK" >/dev/null && ok "Hermes Hands 설치" || bad "Hermes Hands 설치"
 AS settings put secure enabled_accessibility_services "$PKG/$PKG.HandsService"
 AS settings put secure accessibility_enabled 1
@@ -91,8 +94,8 @@ AS input keyevent KEYCODE_HOME
 rec_start "$ART/frames"
 trap 'rec_stop "$ART/frames"; rm -rf "$WORK"' EXIT
 
-echo "== 세션 시작 (설정·계산기·메모·위키백과·2048만 허용, 15분)"
-ph_bg st hands-start 15 "com.android.settings,org.fossify.math,org.fossify.notes,org.wikipedia,${GAME:-com.tpcstld.twozerogame}" "실제 앱 5개 조작 테스트"
+echo "== 세션 시작 (설정·계산기·메모·위키백과·2048·브라우저만 허용, 15분)"
+ph_bg st hands-start 15 "com.android.settings,org.fossify.math,org.fossify.notes,org.wikipedia,${GAME:-com.tpcstld.twozerogame},${BROWSER:-acr.browser.lightning}" "실제 앱 6개 조작 테스트"
 tap_text '^(Yes|YES|예|확인|OK)$' 40 "session-confirm" || bad "세션 확인창 미표시"
 tx_wait st 60 >/dev/null; S="$(AS cat "$TH/.lab/st.log")"
 [ "$(jqv .ok "$S")" = true ] && ok "세션 승인" || { bad "세션 시작"; echo "$S"; AS logcat -d -s HermesHands | tail -20; }
@@ -219,6 +222,36 @@ if [ -n "$GAME" ] && launch "$GAME"; then
   [ $SWIPES -eq 10 ] && ok "⑤ 스와이프 제스처 10회 실행" || bad "⑤ 스와이프 실행 ($SWIPES/10)"
   [ $MOVED -ge 5 ] && ok "⑤ 게임 판이 실제로 움직임 ($MOVED/10회)" || bad "⑤ 게임 반응 ($MOVED/10회)"
 else bad "⑤ 2048 실행"; fi
+
+# ---------- ⑥ 인터넷 브라우저: 주소 입력 → 이동 → 페이지 읽기 → 링크 누르기 ----------
+echo "== ⑥ 브라우저 → example.com 열기 → 링크 눌러 다음 페이지"
+if [ -n "$BROWSER" ] && launch "$BROWSER"; then
+  sleep 3; dismiss
+  for k in 1 2 3 4; do         # 주소창(입력 칸)이 보일 때까지: 첫 실행 안내 넘기기 / 주소창 누르기
+    dump; has '.edit == true' && break
+    i="$(idx "$(T '^(Skip|Continue|Done|Got it|OK|Not now|No thanks|Close|Start browsing|Accept|Agree)$')")"
+    [ -n "$i" ] || i="$(idx "$(T '^(Search or type|Search or enter|Enter URL|Search|주소)')")"
+    [ -n "$i" ] || i="$(idx '((.id // "") | test("url|search|address|location"; "i"))')"
+    [ -n "$i" ] || break
+    echo "     (누름: $(jq -r ".nodes[$i].text // .nodes[$i].desc // .nodes[$i].id" <<<"$D"))"; click_i "$i"; sleep 1.5
+  done
+  show 20
+  if find_el '.edit == true'; then
+    if type_i "$I" "https://example.com" enter; then
+      ok "⑥ 주소 입력 + Enter(이동)"
+      LOADED=0; for k in 1 2 3 4 5 6; do sleep 3; dump; has "$(T 'Example Domain')" && { LOADED=1; break; }; done
+      snap "browser-example"
+      if [ $LOADED = 1 ]; then
+        ok "⑥ 웹페이지 내용 읽기 ('Example Domain')"
+        if tap_el "$(T '^(More information|Learn more)')"; then
+          NEXT=0; for k in 1 2 3 4 5 6; do sleep 3; dump; has "$(T 'IANA|Internet Assigned Numbers|example domains')" && { NEXT=1; break; }; done
+          snap "browser-link"
+          [ $NEXT = 1 ] && ok "⑥ 웹페이지 링크 눌러 다음 페이지 이동 (iana.org)" || { bad "⑥ 링크 이동 확인"; show 25; }
+        else bad "⑥ 페이지 안 링크 못 찾음"; show 25; fi
+      else bad "⑥ 페이지 로드 확인"; show 25; fi
+    else bad "⑥ 주소 입력"; fi
+  else bad "⑥ 주소창 못 찾음"; fi
+else bad "⑥ 브라우저 실행"; fi
 
 echo "== 세션 종료"
 ph sp hands-stop >/dev/null; sleep 1

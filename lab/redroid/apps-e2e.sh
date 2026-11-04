@@ -251,11 +251,16 @@ if [ -n "$BROWSER" ] && launch "$BROWSER"; then
       snap "browser-example"
       if [ $LOADED = 1 ]; then
         ok "⑥ 웹페이지 본문 읽기 ('This domain is for use…')"
-        if tap_el "$(T '^(More information|Learn more|Find out more|IANA)')" 3; then   # 링크가 아래에 있으면 스크롤하며 찾기
-          NEXT=0; for k in 1 2 3 4 5 6; do sleep 3; dump; has "$(T 'IANA|Internet Assigned Numbers|example domains')" && { NEXT=1; break; }; done
+        # 페이지 안 링크(브라우저 자체 버튼이 아닌 = 뷰 id 없는 클릭 요소)를 찾아 누르고, 주소가 바뀌었는지 확인
+        URL0="$(jq -r '[.nodes[] | select(.edit == true and ((.id // "") | test("search|url|address"; "i")))][0].text // empty' <<<"$D")"
+        LINKF='(.click == true) and ((.id // "") == "") and ((.text // .desc // "") | test("^(More information|Learn more|Find out more|IANA)|example|domain|iana"; "i"))'
+        if tap_el "$LINKF" 3; then
+          NEXT=0; for k in 1 2 3 4 5 6; do sleep 3; dump
+            U="$(jq -r '[.nodes[] | select(.edit == true and ((.id // "") | test("search|url|address"; "i")))][0].text // empty' <<<"$D")"
+            [ -n "$U" ] && [ "$U" != "$URL0" ] && { NEXT=1; break; }; done
           snap "browser-link"
-          [ $NEXT = 1 ] && ok "⑥ 웹페이지 링크 눌러 다음 페이지 이동 (iana.org)" || { bad "⑥ 링크 이동 확인"; show 25; }
-        else bad "⑥ 페이지 안 링크 못 찾음"; show 25; fi
+          [ $NEXT = 1 ] && ok "⑥ 웹페이지 링크 눌러 다음 페이지 이동 ($URL0 → $U)" || { bad "⑥ 링크 이동 확인 (주소 그대로: $URL0)"; show 25; }
+        else bad "⑥ 페이지 안 링크 못 찾음"; jq -r '.nodes[] | select(.click == true) | "     [\(.i)] \(.cls) \(.text // .desc // "") #\(.id // "")"' <<<"$D" | head -20; fi
       else bad "⑥ 페이지 로드 확인"; show 25; fi
     else bad "⑥ 주소 입력"; fi
   else bad "⑥ 주소창 못 찾음"; fi
@@ -269,7 +274,7 @@ grep -q '#btn_7 {click}' <<<"$OUT" && ok "⑧ 화면을 코드처럼 읽기 (han
 cat > "$WORK/calc-mul.json" <<'J'
 [ {"do":"launch","package":"org.fossify.math"},
   {"do":"click","match":"^(OK|Got it)$","optional":true},
-  {"do":"click","match":"btn_clear$"},
+  {"do":"click","match":"btn_clear$"}, {"do":"click","match":"btn_clear$"}, {"do":"click","match":"btn_clear$"},
   {"do":"click","match":"btn_7$"}, {"do":"click","match":"btn_multiply$"}, {"do":"click","match":"btn_8$"},
   {"do":"click","match":"btn_equals$"},
   {"do":"assert","match":"^56$"} ]
@@ -277,7 +282,7 @@ J
 push_termux "$WORK/calc-mul.json" "work/recipes/calc-mul.json" 600
 T0=$(date +%s); R="$(ph run1 hands-run @calc-mul)"; T1=$(date +%s)
 echo "     $(grep '^{' <<<"$R" | tail -1 | jq -c '{ok,done,error}' 2>/dev/null)  (${T1}-${T0}=$((T1-T0))초)"
-[ "$(jqv .ok "$R")" = true ] && [ "$(jqv .done "$R")" = 8 ] && ok "⑧ 레시피 한 번 호출로 8단계 실행 → 7×8=56 확인 ($((T1-T0))초)" || { bad "⑧ hands-run 레시피"; echo "$R" | tail -3; }
+[ "$(jqv .ok "$R")" = true ] && [ "$(jqv .done "$R")" = 10 ] && ok "⑧ 레시피 한 번 호출로 10단계 실행 → 7×8=56 확인 ($((T1-T0))초)" || { bad "⑧ hands-run 레시피"; echo "$R" | tail -3; }
 snap "recipe-56"
 R="$(ph run2 hands-run '[{"do":"launch","package":"org.fossify.math"},{"do":"click","match":"btn_clear$"},{"do":"assert","match":"^999$"}]')"
 [ "$(jqv .ok "$R")" = false ] && [[ "$R" == *"step 2"* ]] && ok "⑧ 확인(assert) 실패 시 그 단계에서 멈추고 보고" || { bad "⑧ assert 실패 보고"; echo "$R" | tail -2; }

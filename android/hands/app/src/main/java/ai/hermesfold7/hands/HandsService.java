@@ -622,8 +622,10 @@ public class HandsService extends AccessibilityService {
 
     /** 좌표 제스처는 보호막을 잠깐 '통과' 상태로 바꾼 뒤 실행하고 즉시 되돌림. */
     private boolean gesture(GestureDescription.StrokeDescription stroke, long timeoutMs) throws InterruptedException {
-        runOnMain(() -> setOverlayTouchable(false));
-        Thread.sleep(200);   // 창 관리자가 '통과' 플래그를 입력 시스템에 반영할 때까지 대기 (안 하면 제스처가 보호막에 막힘)
+        // 좌표 제스처 동안만 보호막 창을 잠깐 떼어냄 → 끝나면 바로 다시 붙임.
+        // (FLAG_NOT_TOUCHABLE 전환만으로는 일부 기기/버전에서 주입 제스처가 보호막에 흡수됨)
+        runOnMain(() -> { if (overlay != null && overlay.isAttachedToWindow()) { try { wm.removeViewImmediate(overlay); } catch (Exception ignored) { } } });
+        Thread.sleep(150);
         final boolean[] result = {false};
         final CountDownLatch done = new CountDownLatch(1);
         GestureDescription g = new GestureDescription.Builder().addStroke(stroke).build();
@@ -635,7 +637,7 @@ public class HandsService extends AccessibilityService {
             if (!sent) done.countDown();
         });
         done.await(timeoutMs, TimeUnit.MILLISECONDS);
-        runOnMain(() -> setOverlayTouchable(true));
+        runOnMain(() -> { if (overlay != null && !overlay.isAttachedToWindow() && active) { try { wm.addView(overlay, overlayLp); } catch (Exception e) { Log.w(TAG, "overlay re-add: " + e); } } });
         return result[0];
     }
 

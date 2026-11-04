@@ -21,14 +21,17 @@ NAME="weather-brief"
 
 PROMPT="오늘 ${CITY} 날씨를 웹에서 찾아 한국어로 브리핑해 줘.
 - web_search / web_extract 도구로 최신 정보를 확인 (예: wttr.in, open-meteo, 기상청). 추측하지 말 것.
-- 형식 (6줄 이내):
-  ☀️ ${CITY} 날씨 브리핑 (날짜)
+- 형식 (6줄, 첫 줄 제목 반드시 포함):
+  ☀️ ${CITY} 날씨 브리핑 (YYYY-MM-DD 요일)
   현재: 기온/체감, 하늘 상태
   오늘: 최저/최고, 강수확률
   공기: 미세먼지(확인 가능할 때만)
   조언: 옷차림·우산 한 줄
   출처: URL 1개
 - 확인하지 못한 항목은 '확인 불가'라고 쓸 것."
+
+# 에이전트가 보는 '현재 시각'을 현지 시간대로 (기본은 서버 시간, 폰/서버가 UTC면 날짜가 어긋남)
+"$H" config set timezone "$TZ_NAME" >/dev/null
 
 # 같은 이름 작업이 있으면 교체
 if "$H" cron list 2>/dev/null | grep -q "$NAME"; then

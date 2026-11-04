@@ -21,11 +21,11 @@ adb_root
 ph_file() { local f="$WORK/$1.sh"; shift; printf 'phone' > "$f"; for a in "$@"; do printf ' %q' "$a" >> "$f"; done; echo >> "$f"; echo "$f"; }
 ph()      { local n="$1"; shift; tx_run "$n" "$(ph_file "$n" "$@")" 150 >/dev/null; AS cat "$TH/.lab/$n.log" 2>/dev/null; }
 ph_bg()   { local n="$1"; shift; tx_start "$n" "$(ph_file "$n" "$@")"; }
-jqv()     { jq -r "$1" 2>/dev/null <<<"$2" | tail -1; }
+jqv()     { grep '^{' <<<"$2" | tail -1 | jq -r "$1" 2>/dev/null; }   # 마지막 JSON 줄만
 
 # ---- 에이전트처럼: 화면 읽기 / 요소 찾기 / 누르기 ----
 D=""; I=""
-dump()  { D="$(ph "d$((++NC))" hands-dump)"; }
+dump()  { D="$(ph "d$((++NC))" hands-dump | grep '^{' | tail -1)"; }
 show()  { jq -r '.nodes[] | "     [\(.i)] \(.cls) \(.text // .desc // "" | .[0:40]) \(.id // "" | sub(".*:id/";"#"))\(if .click then " ·click" else "" end)\(if .edit then " ·edit" else "" end)\(if .checked != null then " ·checked=\(.checked)" else "" end)"' <<<"$D" 2>/dev/null | head -"${1:-30}"; }
 T()     { printf '((.text // .desc // "") | test("%s"; "i"))' "$1"; }          # 글자/설명 정규식 필터
 idx()   { jq -r "[.nodes[] | select($1)][0].i // empty" <<<"$D" 2>/dev/null; }
@@ -73,8 +73,10 @@ fdroid_install() {  # fdroid_install <package>
 echo "== 0. 실제 앱 설치 + Hermes Hands 연결"
 AS cmd uimode night no >/dev/null 2>&1          # 시작 상태: 라이트 모드 (Hands 켜기 전에 바꿔 둠)
 for p in org.fossify.math org.fossify.notes org.wikipedia; do fdroid_install "$p" && ok "앱 설치: $p" || bad "앱 설치: $p"; done
-GAME=""   # 오픈소스 2048 게임 (첫 번째로 받아지는 것)
-for p in com.tpcstld.twozerogame com.uberspot.a2048; do fdroid_install "$p" && { GAME="$p"; break; }; done
+GAME=""   # F-Droid 에서 '2048' 검색 → 받아지는 첫 게임
+CANDS="$(curl -fsSL -m 60 'https://search.f-droid.org/?q=2048&lang=en' 2>/dev/null | grep -oE '/en/packages/[A-Za-z0-9_.]+' | sed 's|.*/||' | awk '!s[$0]++' | head -5)"
+echo "     F-Droid 검색 '2048' → $(echo $CANDS)"
+for p in $CANDS; do fdroid_install "$p" && { GAME="$p"; break; }; done
 [ -n "$GAME" ] && ok "앱 설치: 게임 $GAME" || bad "앱 설치: 2048 게임"
 A install -r "$APK" >/dev/null && ok "Hermes Hands 설치" || bad "Hermes Hands 설치"
 AS settings put secure enabled_accessibility_services "$PKG/$PKG.HandsService"
@@ -162,7 +164,15 @@ if launch org.wikipedia; then
     echo "     (안내 화면: $(jq -r ".nodes[$i].text // .nodes[$i].desc" <<<"$D") 누름)"; click_i "$i"; sleep 1.5
   done
   show 25
-  if tap_el "$(T '^(Search Wikipedia|위키백과 검색|Search)')" 1; then
+  for k in 1 2 3 4 5; do        # 검색 입력 칸이 나올 때까지: 팝업 닫기 → 검색창 → 하단 Search 탭
+    dump; has '.edit == true' && break
+    i="$(idx "$(T '^(Close|Not now|No thanks|닫기|나중에)$')")"
+    [ -n "$i" ] || i="$(idx "$(T '^(Search Wikipedia|위키백과 검색)')")"
+    [ -n "$i" ] || i="$(idx '((.id // "") | test("nav_tab_search$"))')"
+    [ -n "$i" ] || break
+    echo "     (누름: $(jq -r ".nodes[$i].text // .nodes[$i].desc // .nodes[$i].id" <<<"$D"))"; click_i "$i"; sleep 1.5
+  done
+  if true; then
     sleep 1
     if find_el '.edit == true'; then
       type_i "$I" "Seoul"; sleep 4

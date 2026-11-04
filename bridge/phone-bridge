@@ -96,7 +96,7 @@ hands() {  # hands <cmd> [jq 인자들로 만든 추가 필드 JSON]
   [ -f "$BRIDGE_HOME/hands.token" ] || die "Hermes Hands 미연결: 앱에서 토큰 복사 후 Termux에서 'phone-hands-pair <토큰>'"
   tok="$(head -c 200 "$BRIDGE_HOME/hands.token")"
   local k; for k in 1 2 3 4 5; do       # 서비스가 다시 붙는 중이면 잠깐 기다렸다 재시도
-    exec 3<>"/dev/tcp/127.0.0.1/$HANDS_PORT" 2>/dev/null && break
+    { exec 3<>"/dev/tcp/127.0.0.1/$HANDS_PORT"; } 2>/dev/null && break
     [ $k = 5 ] && die "Hermes Hands 앱 응답 없음 (접근성 서비스 켜짐 확인)"; sleep 1
   done
   jq -cn --arg t "$tok" --arg c "$1" --argjson x "$extra" '$x + {token:$t, cmd:$c}' >&3

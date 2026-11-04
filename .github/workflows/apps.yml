@@ -35,7 +35,7 @@ jobs:
   e2e:
     needs: build
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 80
     permissions:
       contents: write      # 결과 GIF 게시(apps-results 브랜치)
     env:
@@ -45,16 +45,23 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with: { name: hermes-hands-apk }
+      - name: 앱 APK 캐시 (F-Droid 가 느릴 때 대비)
+        uses: actions/cache@v4
+        with:
+          path: ~/fdroid-cache
+          key: fdroid-apks-v1-${{ hashFiles('lab/redroid/apps-e2e.sh') }}
+          restore-keys: fdroid-apks-v1-
       - name: 안드로이드(redroid) 기동
         run: sudo -E LAB_CI=1 REDROID_VERSION=14.0.0_64only REDROID_FALLBACKS="13.0.0_64only" REDROID_W=1080 REDROID_H=1920 REDROID_DPI=420 bash lab/redroid/setup-server.sh
       - name: Termux + 폰 브리지 설치 (Hermes 본체 없이)
         run: sudo -E PLAN=none bash lab/redroid/install-termux.sh
       - name: 실제 앱 조작 테스트 (녹화)
-        timeout-minutes: 30
+        timeout-minutes: 50
         shell: bash
         run: |
           mkdir -p "$ART_DIR"
-          sudo -E bash lab/redroid/apps-e2e.sh "$PWD/hermes-hands.apk" | tee "$ART_DIR/e2e-result.txt"
+          sudo -E FDROID_CACHE="$HOME/fdroid-cache" bash lab/redroid/apps-e2e.sh "$PWD/hermes-hands.apk" | tee "$ART_DIR/e2e-result.txt"
+          sudo chown -R "$(id -u):$(id -g)" "$HOME/fdroid-cache" 2>/dev/null || true
       - name: 화면 GIF → 실행 결과 페이지
         if: always()
         env:

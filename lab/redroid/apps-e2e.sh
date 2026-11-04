@@ -53,8 +53,12 @@ dismiss()  {  # 첫 실행 팝업(안내·권한·평가 요청 등) 닫기
 
 # ---------- 0. 실제 앱 설치 (F-Droid 공식 저장소) ----------
 fdroid_install() {  # fdroid_install <package>
-  local p="$1" j vc f="$WORK/$1.apk"
-  local C=(curl -fsSL --retry 5 --retry-delay 20 --retry-all-errors -m 300)
+  local p="$1" j vc f="$WORK/$1.apk" cache="${FDROID_CACHE:-}"
+  # 캐시(이전 실행에서 받은 APK)가 있으면 먼저 사용 — F-Droid 가 느릴 때 대비
+  if [ -n "$cache" ] && [ -s "$cache/$p.apk" ] && A install -r -g "$cache/$p.apk" >/dev/null 2>&1; then
+    echo "     $p (캐시, sha256 $(sha256sum "$cache/$p.apk" | cut -c1-16)…)"; return 0
+  fi
+  local C=(curl -fsSL --retry 3 --retry-delay 20 --retry-all-errors -m 1200)
   sleep "${FDROID_GAP:-0}"; FDROID_GAP=15             # F-Droid 요청 제한(연속 요청 시 502/429) 회피
   echo "     F-Droid $p: API HTTP $(curl -s -o /dev/null -w '%{http_code}' "https://f-droid.org/api/v1/packages/$p")"
   # 1순위: F-Droid API / 2순위(API 장애 시): 앱 소개 페이지에 있는 APK 링크
@@ -65,6 +69,7 @@ fdroid_install() {  # fdroid_install <package>
   for vc in $(awk 'NF && !s[$0]++' <<<"$vcs" | head -6); do
     "${C[@]}" "https://f-droid.org/repo/${p}_${vc}.apk" -o "$f" || continue
     if A install -r -g "$f" >/dev/null 2>&1; then
+      [ -n "$cache" ] && mkdir -p "$cache" && cp "$f" "$cache/$p.apk"
       echo "     $p (versionCode $vc, sha256 $(sha256sum "$f" | cut -c1-16)…)"; return 0
     fi
   done

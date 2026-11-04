@@ -64,24 +64,50 @@ fi
 fi
 # Oracle Cloud 이미지는 iptables 규칙이 별도로 있음 — 5555를 열지 않으므로 손대지 않음
 
-say "4. redroid 실행 (Android ${ANDROID_VERSION}, ${W}x${H}@${DPI}dpi)"
-mkdir -p "$DATA_DIR"
-docker rm -f "$NAME" >/dev/null 2>&1 || true
-docker run -d --name "$NAME" --privileged --restart unless-stopped \
-  --pull always \
-  -v "$DATA_DIR:/data" \
-  -p 127.0.0.1:5555:5555 \
-  "redroid/redroid:${ANDROID_VERSION}-latest" \
-  androidboot.redroid_width="$W" androidboot.redroid_height="$H" androidboot.redroid_dpi="$DPI" \
-  androidboot.use_memfd=true
+start_redroid() {  # start_redroid <version>
+  say "4. redroid 실행 (Android $1, ${W}x${H}@${DPI}dpi)"
+  docker rm -f "$NAME" >/dev/null 2>&1 || true
+  rm -rf "$DATA_DIR"; mkdir -p "$DATA_DIR"    # 이전 버전 데이터와 섞이지 않게
+  docker run -d --name "$NAME" --privileged --restart unless-stopped \
+    --pull always \
+    -v "$DATA_DIR:/data" \
+    -p 127.0.0.1:5555:5555 \
+    "redroid/redroid:$1-latest" \
+    androidboot.redroid_width="$W" androidboot.redroid_height="$H" androidboot.redroid_dpi="$DPI" \
+    androidboot.use_memfd=true
+}
+wait_boot() {  # wait_boot <timeout_sec> → 0: 부팅 완료 + 패키지 서비스 준비
+  local t="$1" i
+  for ((i=0; i<t; i+=5)); do
+    adb connect 127.0.0.1:5555 >/dev/null 2>&1 || true
+    if [ "$(adb -s 127.0.0.1:5555 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ] \
+       && adb -s 127.0.0.1:5555 shell pm path android >/dev/null 2>&1; then
+      echo "부팅 완료 (${i}s)"; return 0
+    fi
+    sleep 5
+  done
+  return 1
+}
+diag() {
+  echo "---- 진단: docker ps / logs"; docker ps -a --filter "name=$NAME"; docker logs --tail 50 "$NAME" 2>&1
+  echo "---- 진단: getprop boot"; adb -s 127.0.0.1:5555 shell getprop 2>/dev/null | grep -E 'boot|init.svc.(zygote|surfaceflinger|servicemanager)' | head -30
+  echo "---- 진단: logcat (E/F)"; adb -s 127.0.0.1:5555 logcat -d -b all '*:E' 2>/dev/null | tail -60
+  echo "---- 진단: dmesg"; dmesg 2>/dev/null | grep -iE 'binder|avc|redroid|segfault' | tail -30
+  echo "---- 진단: binder"; ls -la /dev/binder* /dev/binderfs 2>&1 | head; lsmod | grep -E 'binder|ashmem'
+}
 
-say "5. 부팅 대기"
-adb connect 127.0.0.1:5555 >/dev/null || true
-for i in $(seq 1 120); do
-  adb connect 127.0.0.1:5555 >/dev/null 2>&1 || true
-  [ "$(adb -s 127.0.0.1:5555 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ] && break
-  sleep 3
+# 시도할 버전: 지정 버전 → (실패 시) 안정 버전들로 자동 대체
+VERSIONS=("$ANDROID_VERSION")
+[ -n "${REDROID_FALLBACKS-14.0.0_64only 13.0.0_64only}" ] && read -r -a FB <<< "${REDROID_FALLBACKS-14.0.0_64only 13.0.0_64only}" && VERSIONS+=("${FB[@]}")
+BOOTED=""
+for v in "${VERSIONS[@]}"; do
+  start_redroid "$v"
+  say "5. 부팅 대기 (Android $v)"
+  if wait_boot "${REDROID_BOOT_TIMEOUT:-480}"; then BOOTED="$v"; break; fi
+  echo "⚠ Android $v 부팅 실패"; diag
 done
+[ -n "$BOOTED" ] || { echo "❌ 모든 버전 부팅 실패 — 위 진단 참고" >&2; exit 1; }
+[ "$BOOTED" = "$ANDROID_VERSION" ] || echo "ℹ 요청 버전($ANDROID_VERSION) 대신 $BOOTED 로 실행 중"
 adb -s 127.0.0.1:5555 shell getprop ro.build.version.release | sed 's/^/Android /'
 docker ps --filter "name=$NAME" --format '{{.Names}}  {{.Ports}}'
 if ss -ltn | grep -q '0.0.0.0:5555'; then echo "❌ 5555가 외부에 열려 있습니다! 중단하세요." >&2; exit 1; fi

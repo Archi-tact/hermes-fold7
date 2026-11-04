@@ -41,6 +41,7 @@ import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
+import java.util.Collections;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -429,26 +430,35 @@ public class HandsService extends AccessibilityService {
     private JSONObject scroll(JSONObject q) throws Exception {
         String bad = checkForeground();
         if (bad != null) return err(bad);
-        AccessibilityNodeInfo n = q.has("i") ? target(q) : firstScrollable(getRootInActiveWindow());
-        if (n == null) return err("no scrollable node");
         boolean down = !"up".equals(q.optString("dir", "down"));
-        Rect b = new Rect();
-        n.getBoundsInScreen(b);
+        int act = down ? AccessibilityNodeInfo.ACTION_SCROLL_FORWARD : AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD;
+        List<AccessibilityNodeInfo> cands = new ArrayList<>();
+        if (q.has("i")) {
+            AccessibilityNodeInfo n = target(q);
+            if (n == null) return err("node not found");
+            cands.add(n);
+        } else {
+            // 화면의 스크롤 영역을 모두 모아 '가장 안쪽(구체적인) 목록'부터 시도 — 겉 컨테이너는 실제로 안 움직이는 경우가 많음
+            collectScrollables(getRootInActiveWindow(), 0, cands);
+            if (cands.isEmpty()) return err("no scrollable node");
+            Collections.reverse(cands);
+        }
         setStep(down ? "아래로 스크롤" : "위로 스크롤");
-        showHighlight(b);
-        boolean done = n.performAction(down ? AccessibilityNodeInfo.ACTION_SCROLL_FORWARD : AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD);
+        for (AccessibilityNodeInfo n : cands) {
+            Rect b = new Rect();
+            n.getBoundsInScreen(b);
+            if (b.width() < 50 || b.height() < 50) continue;
+            showHighlight(b);
+            if (n.performAction(act)) { afterStep(); return ok(); }
+        }
         afterStep();
-        return done ? ok() : err("scroll failed (끝에 도달했을 수 있음)");
+        return err("scroll failed (끝에 도달했을 수 있음)");
     }
 
-    private AccessibilityNodeInfo firstScrollable(AccessibilityNodeInfo n) {
-        if (n == null) return null;
-        if (n.isScrollable() && n.isVisibleToUser()) return n;
-        for (int i = 0; i < n.getChildCount(); i++) {
-            AccessibilityNodeInfo r = firstScrollable(n.getChild(i));
-            if (r != null) return r;
-        }
-        return null;
+    private void collectScrollables(AccessibilityNodeInfo n, int depth, List<AccessibilityNodeInfo> out) {
+        if (n == null || depth > 60) return;
+        if (n.isScrollable() && n.isVisibleToUser()) out.add(n);
+        for (int i = 0; i < n.getChildCount(); i++) collectScrollables(n.getChild(i), depth + 1, out);
     }
 
     private JSONObject global(int action, String name) throws Exception {

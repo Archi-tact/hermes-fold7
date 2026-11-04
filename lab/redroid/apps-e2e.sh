@@ -54,9 +54,14 @@ dismiss()  {  # 첫 실행 팝업(안내·권한·평가 요청 등) 닫기
 # ---------- 0. 실제 앱 설치 (F-Droid 공식 저장소) ----------
 fdroid_install() {  # fdroid_install <package>
   local p="$1" j vc f="$WORK/$1.apk"
-  j="$(curl -fsSL --retry 3 "https://f-droid.org/api/v1/packages/$p")" || { echo "     F-Droid 조회 실패: $p"; return 1; }
-  for vc in $(jq -r '.suggestedVersionCode, (.packages[].versionCode)' <<<"$j" | awk 'NF && !s[$0]++' | head -6); do
-    curl -fsSL --retry 3 "https://f-droid.org/repo/${p}_${vc}.apk" -o "$f" || continue
+  local C=(curl -fsSL --retry 6 --retry-delay 5 --retry-all-errors -m 300)
+  # 1순위: F-Droid API / 2순위(API 장애 시): 앱 소개 페이지에 있는 APK 링크
+  j="$("${C[@]}" "https://f-droid.org/api/v1/packages/$p" 2>/dev/null)"
+  vcs="$(jq -r '.suggestedVersionCode, (.packages[].versionCode)' <<<"$j" 2>/dev/null)"
+  [ -n "$vcs" ] || vcs="$("${C[@]}" "https://f-droid.org/en/packages/$p/" 2>/dev/null | grep -oE "${p//./\\.}_[0-9]+\.apk" | grep -oE '_[0-9]+\.apk' | tr -dc '0-9\n')"
+  [ -n "$vcs" ] || { echo "     F-Droid 조회 실패: $p"; return 1; }
+  for vc in $(awk 'NF && !s[$0]++' <<<"$vcs" | head -6); do
+    "${C[@]}" "https://f-droid.org/repo/${p}_${vc}.apk" -o "$f" || continue
     if A install -r -g "$f" >/dev/null 2>&1; then
       echo "     $p (versionCode $vc, sha256 $(sha256sum "$f" | cut -c1-16)…)"; return 0
     fi
@@ -126,9 +131,9 @@ echo "== ③ 메모 → '$MEMO' 저장 후 다시 열어 확인"
 if launch org.fossify.notes; then
   dismiss; show 25
   if find_el '.edit == true'; then
-    type_i "$I" "$MEMO" && ok "③ 메모 입력" || bad "③ 메모 입력"
-    sleep 1; snap "notes-typed"
-    ph "b$((++NC))" hands-back >/dev/null; sleep 1
+    type_i "$I" "$MEMO"; sleep 1; dump; snap "notes-typed"
+    has "$(T "$MEMO")" && ok "③ 메모 입력 (화면에 글자 보임)" || { bad "③ 메모 입력"; show 10; }
+    ph "h$((++NC))" hands-home >/dev/null; sleep 4    # 앱이 백그라운드로 가며 저장할 시간
     AS am force-stop org.fossify.notes                 # 앱 완전 종료 → 저장됐는지 확인
     launch org.fossify.notes; dismiss
     if has "$(T "$MEMO")"; then ok "③ 앱을 다시 열어도 메모가 남아 있음"; snap "notes-reopened"

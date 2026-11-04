@@ -1,0 +1,32 @@
+# NVIDIA 무료 API: 이 계정 키로 실제 쓸 수 있는 모델과 응답 속도 측정 (키는 Secrets 에서만 사용, 출력 안 함)
+name: nvidia-models
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      KEY: ${{ secrets.NVIDIA_API_KEY }}
+    steps:
+      - name: 모델 목록 + 속도 측정
+        shell: bash
+        run: |
+          B=https://integrate.api.nvidia.com/v1
+          curl -fsS -H "Authorization: Bearer $KEY" "$B/models" | jq -r '.data[].id' | sort > models.txt
+          echo "전체 모델 수: $(wc -l < models.txt)"
+          # 에이전트에 쓸 만한 후보 (도구 호출 지원 계열) — 목록에 있는 것만 측정
+          grep -E 'nemotron|llama-3\.3|llama-4|qwen3|kimi|glm|deepseek|gpt-oss|mistral-(large|medium)|minimax' models.txt > cands.txt || true
+          echo "후보 $(wc -l < cands.txt)개"; echo
+          printf '%-55s %8s %s\n' MODEL 초 결과 | tee -a "$GITHUB_STEP_SUMMARY"
+          while read -r m; do
+            body=$(jq -cn --arg m "$m" '{model:$m, messages:[{role:"user",content:"한 단어로만 답해: 대한민국의 수도는?"}], max_tokens:64, temperature:0.2}')
+            t0=$(date +%s.%N)
+            r=$(curl -sS -m 60 -w '\n%{http_code}' -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' -d "$body" "$B/chat/completions" || echo $'\n000')
+            t1=$(date +%s.%N); code=$(tail -1 <<<"$r"); txt=$(sed '$d' <<<"$r" | jq -r '.choices[0].message.content // .detail // .title // empty' 2>/dev/null | tr '\n' ' ' | cut -c1-30)
+            printf '%-55s %8.1f %s\n' "$m" "$(echo "$t1 - $t0" | bc)" "$code $txt" | tee -a "$GITHUB_STEP_SUMMARY"
+          done < cands.txt

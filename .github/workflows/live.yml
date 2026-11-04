@@ -2,7 +2,8 @@
 #
 # 준비(1회): Tailscale 관리자 → Settings → Keys → Generate auth key
 #            (Reusable 끔, Ephemeral 켬) → 저장소 Settings → Secrets → Actions → TS_AUTHKEY
-# 사용: Actions → live → Run workflow → 폰에서 Tailscale 켜고, 실행 Summary/로그에 나온 주소 열기
+# 사용: Actions → live → Run workflow → 폰 Tailscale 앱 기기 목록의 hermes-lab-<번호> IP → 브라우저 http://IP:8000
+#       (Summary는 실행이 끝나야 보이므로, 실행 중에는 Tailscale 앱 또는 '화면 유지' 단계 로그에서 주소 확인)
 #
 # 보안: 화면은 Tailscale 사설망(내 기기만)으로만 열림. GitHub 러너는 인터넷에서 들어오는 연결이 불가.
 #       Ephemeral 키라 실행이 끝나면 러너 기기가 tailnet에서 자동 삭제됨. 테스트용 가상폰이며 개인 데이터 없음.
@@ -87,9 +88,11 @@ jobs:
       - name: 화면 유지 (직접 조작해 보세요)
         run: |
           M="${{ inputs.minutes }}"; [[ "$M" =~ ^[0-9]+$ ]] || M=30; [ "$M" -gt 300 ] && M=300
-          echo "${M}분 동안 유지합니다. Termux 앱에서 'hermes-proot --tui' 등 직접 실행해 볼 수 있습니다."
+          URL="http://$(tailscale ip -4 | head -1):8000/"
+          echo "${M}분 동안 유지합니다. 접속: ${URL}  (폰 Tailscale 앱 기기 목록의 hermes-lab-${{ github.run_number }})"
+          echo "Termux 앱에서 'hermes-proot --tui' 등 직접 실행해 볼 수 있습니다."
           for ((i=M; i>0; i--)); do
             curl -fs http://127.0.0.1:8000/ >/dev/null || echo "⚠ ws-scrcpy 응답 없음"
-            [ $((i % 5)) -eq 0 ] && echo "남은 시간: ${i}분"
+            [ $((i % 5)) -eq 0 ] && echo "남은 시간: ${i}분 — 접속 주소: ${URL}"
             sleep 60
           done

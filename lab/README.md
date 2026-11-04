@@ -26,7 +26,8 @@
 1. Tailscale 관리자 페이지 → Settings → Keys → **Generate auth key** (Reusable 끔, **Ephemeral 켬**)
 2. 저장소 Settings → Secrets and variables → Actions → New secret: `TS_AUTHKEY`
 3. Actions → **live** → Run workflow (유지 시간, 키트 실행 여부 선택)
-4. 폰에서 Tailscale ON → 실행 페이지 Summary/Annotations 에 나온 `http://100.x.x.x:8000/` 열기 → 기기 옆 **H264 Converter**
+4. 폰 Tailscale 앱 ON → 기기 목록의 **`hermes-lab-<실행번호>`** IP 확인 → 브라우저로 `http://100.x.x.x:8000/` → 기기 옆 **H264 Converter**
+   (실행 중에는 Summary가 안 보입니다. 실행 → live 작업 → '화면 유지' 단계 로그에도 주소가 5분마다 출력됩니다)
 
 화면은 Tailscale 사설망 안에서만 열립니다 (GitHub 러너는 외부 접속 불가, ephemeral 키라 종료 시 자동 삭제).
 

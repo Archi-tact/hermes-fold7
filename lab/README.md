@@ -21,6 +21,15 @@
 - 한계: x86_64라 **Plan A(공식 Termux 패키지, aarch64 전용)는 못 돌림**. 화면을 실시간으로 볼 수는 없고 스크린샷으로 확인.
 - 비용: 공개 저장소 무료. 비공개 저장소는 무료 한도(월 2,000분) 차감.
 
+## 0-1. 실시간 모드: 폰 브라우저로 테스트 안드로이드 보기·조작 (`.github/workflows/live.yml`)
+
+1. Tailscale 관리자 페이지 → Settings → Keys → **Generate auth key** (Reusable 끔, **Ephemeral 켬**)
+2. 저장소 Settings → Secrets and variables → Actions → New secret: `TS_AUTHKEY`
+3. Actions → **live** → Run workflow (유지 시간, 키트 실행 여부 선택)
+4. 폰에서 Tailscale ON → 실행 페이지 Summary/Annotations 에 나온 `http://100.x.x.x:8000/` 열기 → 기기 옆 **H264 Converter**
+
+화면은 Tailscale 사설망 안에서만 열립니다 (GitHub 러너는 외부 접속 불가, ephemeral 키라 종료 시 자동 삭제).
+
 ## 1. lab/arm64
 
 ```bash

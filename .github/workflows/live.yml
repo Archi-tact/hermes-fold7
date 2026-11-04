@@ -1,0 +1,95 @@
+# 실시간 모드 — GitHub 러너 위 안드로이드(redroid)를 폰 브라우저로 실시간 보기/터치 조작
+#
+# 준비(1회): Tailscale 관리자 → Settings → Keys → Generate auth key
+#            (Reusable 끔, Ephemeral 켬) → 저장소 Settings → Secrets → Actions → TS_AUTHKEY
+# 사용: Actions → live → Run workflow → 폰에서 Tailscale 켜고, 실행 Summary/로그에 나온 주소 열기
+#
+# 보안: 화면은 Tailscale 사설망(내 기기만)으로만 열림. GitHub 러너는 인터넷에서 들어오는 연결이 불가.
+#       Ephemeral 키라 실행이 끝나면 러너 기기가 tailnet에서 자동 삭제됨. 테스트용 가상폰이며 개인 데이터 없음.
+name: live
+on:
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: "화면 유지 시간(분, 최대 300)"
+        default: "30"
+      run_kit:
+        description: "키트 설치 + E2E 테스트를 화면으로 보여주기"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  live:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 330
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      WS_SCRCPY_COMMIT: cd6cea6ebde17af6685c2b325183fc24bef9d52b   # NetrisTV/ws-scrcpy 고정
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: TS_AUTHKEY 확인
+        env: { TS_AUTHKEY: "${{ secrets.TS_AUTHKEY }}" }
+        run: |
+          [ -n "$TS_AUTHKEY" ] || { echo "::error::저장소 Secrets에 TS_AUTHKEY(Tailscale ephemeral auth key)를 추가하세요"; exit 1; }
+
+      - name: 안드로이드(redroid) 기동 — 폴드7 펼친 화면 비율
+        run: sudo -E LAB_CI=1 REDROID_VERSION=14.0.0_64only REDROID_FALLBACKS="13.0.0_64only" REDROID_W=1968 REDROID_H=2184 REDROID_DPI=420 bash lab/redroid/setup-server.sh
+
+      - name: 웹 화면 공유(ws-scrcpy) 빌드·실행
+        run: |
+          sudo adb -s 127.0.0.1:5555 root >/dev/null 2>&1 || true; sleep 3
+          sudo adb connect 127.0.0.1:5555
+          git clone -q https://github.com/NetrisTV/ws-scrcpy "$RUNNER_TEMP/ws-scrcpy"
+          cd "$RUNNER_TEMP/ws-scrcpy" && git checkout -q "$WS_SCRCPY_COMMIT"
+          npm ci --no-audit --no-fund --loglevel=error
+          npm run dist >/dev/null
+          cd dist && npm install --omit=dev --no-audit --no-fund --loglevel=error
+          # 러너의 adb 서버(root가 띄움)를 공유하도록 같은 사용자로 실행
+          sudo nohup node index.js > "$RUNNER_TEMP/ws-scrcpy.log" 2>&1 &
+          for i in $(seq 1 30); do curl -fs http://127.0.0.1:8000/ >/dev/null && break; sleep 2; done
+          curl -fs http://127.0.0.1:8000/ >/dev/null || { tail -50 "$RUNNER_TEMP/ws-scrcpy.log"; exit 1; }
+
+      - name: Tailscale 연결 (내 사설망에만 공개)
+        uses: tailscale/github-action@v3
+        with:
+          authkey: ${{ secrets.TS_AUTHKEY }}
+          hostname: hermes-lab-${{ github.run_number }}
+
+      - name: 접속 주소 안내
+        run: |
+          IP="$(tailscale ip -4 | head -1)"
+          URL="http://${IP}:8000/"
+          NAME_URL="http://hermes-lab-${{ github.run_number }}:8000/"
+          {
+            echo "## 📱 실시간 안드로이드 화면"
+            echo
+            echo "1. 폰에서 **Tailscale 앱 ON** (같은 계정)"
+            echo "2. 폰 브라우저로 열기: **${URL}**  (또는 ${NAME_URL})"
+            echo "3. 목록의 기기 옆 **H264 Converter** (또는 Broadway) 누르기 → 화면 표시, 터치로 조작"
+            echo
+            echo "유지 시간: ${{ inputs.minutes }}분. 일찍 끝내려면 이 실행을 Cancel."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice title=실시간 화면 주소::${URL}  (Tailscale ON 상태의 폰 브라우저에서 열기)"
+
+      - name: 키트 설치 + E2E (화면으로 진행 상황 보기)
+        if: inputs.run_kit
+        continue-on-error: true
+        shell: bash
+        run: |
+          sudo -E PLAN=proot bash lab/redroid/install-termux.sh
+          mkdir -p lab/redroid/artifacts
+          sudo -E bash lab/redroid/e2e-test.sh | tee lab/redroid/artifacts/e2e-result.txt
+
+      - name: 화면 유지 (직접 조작해 보세요)
+        run: |
+          M="${{ inputs.minutes }}"; [[ "$M" =~ ^[0-9]+$ ]] || M=30; [ "$M" -gt 300 ] && M=300
+          echo "${M}분 동안 유지합니다. Termux 앱에서 'hermes-proot --tui' 등 직접 실행해 볼 수 있습니다."
+          for ((i=M; i>0; i--)); do
+            curl -fs http://127.0.0.1:8000/ >/dev/null || echo "⚠ ws-scrcpy 응답 없음"
+            [ $((i % 5)) -eq 0 ] && echo "남은 시간: ${i}분"
+            sleep 60
+          done

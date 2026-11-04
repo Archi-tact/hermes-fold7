@@ -17,6 +17,8 @@ PASS=0; FAIL=0; NC=0
 ok()  { echo "OK   $1"; PASS=$((PASS+1)); }
 bad() { echo "FAIL $1"; FAIL=$((FAIL+1)); }
 adb_root
+read -r SW SH < <(AS wm size | grep -oE '[0-9]+x[0-9]+' | tail -1 | tr 'x' ' ')
+GX=$((SW/2)); GY=$((SH*57/100)); R=$((SW/4))
 
 ph_file() { local f="$WORK/$1.sh"; shift; printf 'phone' > "$f"; for a in "$@"; do printf ' %q' "$a" >> "$f"; done; echo >> "$f"; echo "$f"; }
 ph()      { local n="$1"; shift; tx_run "$n" "$(ph_file "$n" "$@")" 150 >/dev/null; AS cat "$TH/.lab/$n.log" 2>/dev/null; }

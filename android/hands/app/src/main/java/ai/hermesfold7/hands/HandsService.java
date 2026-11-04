@@ -227,6 +227,7 @@ public class HandsService extends AccessibilityService {
         switch (cmd) {
             case "status": return status();
             case "start": return start(q);
+            case "check": return checkApps(q);   // 확인창 전에 금지 앱 사전 검사 (세션 안 만듦)
             case "stop": endSession("에이전트 요청"); return ok();
         }
         if (!active) return err("no active session (먼저 hands-start)");
@@ -254,6 +255,17 @@ public class HandsService extends AccessibilityService {
                 .put("step_ms", stepMs).put("highlight_ms", highlightMs);
         if (active) o.put("remaining_s", Math.max(0, (deadline - System.currentTimeMillis()) / 1000));
         return o;
+    }
+
+    private JSONObject checkApps(JSONObject q) throws Exception {
+        JSONArray apps = q.optJSONArray("apps");
+        if (apps == null || apps.length() == 0) return err("apps required");
+        for (int i = 0; i < apps.length(); i++) {
+            String p = apps.getString(i).trim();
+            if (!p.matches("[A-Za-z0-9_.]+")) return err("bad package: " + p);
+            if (denied(p)) return err("denied package (은행·결제·인증 앱): " + p);
+        }
+        return ok();
     }
 
     private JSONObject start(JSONObject q) throws Exception {

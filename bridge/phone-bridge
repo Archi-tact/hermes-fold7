@@ -89,6 +89,25 @@ done
 echo $$ > "$LOCK_DIR/pid"
 trap 'rm -rf "$LOCK_DIR"' EXIT
 
+HANDS_PORT="${HANDS_PORT:-47800}"
+hands() {  # hands <cmd> [jq 인자들로 만든 추가 필드 JSON]
+  local extra="${2:-}" tok line
+  [ -n "$extra" ] || extra='{}'
+  [ -f "$BRIDGE_HOME/hands.token" ] || die "Hermes Hands 미연결: 앱에서 토큰 복사 후 Termux에서 'phone-hands-pair <토큰>'"
+  tok="$(head -c 200 "$BRIDGE_HOME/hands.token")"
+  exec 3<>"/dev/tcp/127.0.0.1/$HANDS_PORT" 2>/dev/null || die "Hermes Hands 앱 응답 없음 (접근성 서비스 켜짐 확인)"
+  jq -cn --arg t "$tok" --arg c "$1" --argjson x "$extra" '$x + {token:$t, cmd:$c}' >&3
+  IFS= read -r -t 90 line <&3 || line='{"ok":false,"error":"timeout"}'
+  exec 3>&- 3<&-
+  printf '%s\n' "$line"
+}
+
+# Hermes Hands: 금지 앱이면 확인창을 띄우기 전에 바로 거부
+if [ "$ACTION" = hands-start ] && [ -n "${ARGS[1]:-}" ]; then
+  chk="$(hands check "$(jq -cn --arg a "${ARGS[1]}" '{apps:($a|split(","))}')")"
+  [ "$(jq -r '.ok' <<<"$chk" 2>/dev/null)" = true ] || { audit "REFUSED" "$ACTION ${ARGS[1]}"; printf '%s\n' "$chk"; exit 1; }
+fi
+
 # ---------- 사람 확인 ----------
 confirm() {
   local summary="$1" res
@@ -124,18 +143,6 @@ A() { adb shell -- "$@"; }   # 인자 배열 그대로 전달 (adb가 원격에�
 safe_word() { [[ "$1" =~ ^[A-Za-z0-9._:/-]+$ ]] || die "unsafe value: $1"; }
 
 # ---------- Hermes Hands 헬퍼 (127.0.0.1:47800, 토큰 인증 한 줄 JSON) ----------
-HANDS_PORT="${HANDS_PORT:-47800}"
-hands() {  # hands <cmd> [jq 인자들로 만든 추가 필드 JSON]
-  local extra="${2:-}" tok line
-  [ -n "$extra" ] || extra='{}'
-  [ -f "$BRIDGE_HOME/hands.token" ] || die "Hermes Hands 미연결: 앱에서 토큰 복사 후 Termux에서 'phone-hands-pair <토큰>'"
-  tok="$(head -c 200 "$BRIDGE_HOME/hands.token")"
-  exec 3<>"/dev/tcp/127.0.0.1/$HANDS_PORT" 2>/dev/null || die "Hermes Hands 앱 응답 없음 (접근성 서비스 켜짐 확인)"
-  jq -cn --arg t "$tok" --arg c "$1" --argjson x "$extra" '$x + {token:$t, cmd:$c}' >&3
-  IFS= read -r -t 90 line <&3 || line='{"ok":false,"error":"timeout"}'
-  exec 3>&- 3<&-
-  printf '%s\n' "$line"
-}
 pkg_ok() { [[ "$1" =~ ^[A-Za-z0-9_.]+$ ]] || die "bad package: $1"; }
 node_sel() {  # 숫자면 i, text:… / id:… 형태 지원
   case "$1" in

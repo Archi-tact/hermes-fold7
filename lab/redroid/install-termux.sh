@@ -3,7 +3,8 @@
 #   sudo PLAN=auto bash lab/redroid/install-termux.sh      # auto: A 시도 → 실패 시 B
 #   PLAN=apt | proot 로 고정 가능
 #   (선택) lab/redroid/secrets.env 에 OPENROUTER_API_KEY=... 등을 넣으면 Hermes 실제 대화 스모크 테스트까지 수행
-set -euo pipefail
+set -Eeuo pipefail
+trap 'echo "[lab] ❌ 실패: ${BASH_SOURCE[0]##*/}:$LINENO → $BASH_COMMAND (rc=$?)" >&2' ERR
 LAB="$(cd "$(dirname "$0")" && pwd)"; KIT="$(cd "$LAB/../.." && pwd)"
 # shellcheck source=lib.sh
 . "$LAB/lib.sh"

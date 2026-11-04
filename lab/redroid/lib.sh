@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # lab/redroid/lib.sh — redroid 안의 Termux를 호스트에서 조종하는 헬퍼 (source 해서 사용)
 # 테스트 전용: adb root 권한을 사용합니다. 실제 폰에서는 쓰지 마세요.
 
@@ -40,13 +41,18 @@ tx_start() {  # tx_start <name> <script_file_on_host>
     --esa com.termux.RUN_COMMAND_ARGUMENTS "$TH/.lab/runner,$name"
     --es com.termux.RUN_COMMAND_WORKDIR "$TH"
     --ez com.termux.RUN_COMMAND_BACKGROUND true)
-  AS am start-foreground-service --user 0 "${args[@]}" >/dev/null 2>&1 \
-    || AS am startservice --user 0 "${args[@]}" >/dev/null
+  local r
+  r="$(adb -s "$SERIAL" shell am start-foreground-service --user 0 "${args[@]}" 2>&1 | tr -d '\r')"
+  if [[ "$r" == *Error* || "$r" == *Exception* ]]; then
+    r="$(adb -s "$SERIAL" shell am startservice --user 0 "${args[@]}" 2>&1 | tr -d '\r')"
+  fi
+  [[ "$r" == *Error* || "$r" == *Exception* ]] && { echo "[lab] RUN_COMMAND 실패: $r" >&2; return 1; }
+  return 0
 }
 tx_wait() {   # tx_wait <name> [timeout_sec] → 종료코드 반환, 로그 출력
   local name="$1" t="${2:-1800}" i rc
   for ((i=0; i<t; i+=3)); do
-    rc="$(AS cat "$TH/.lab/$name.rc" 2>/dev/null)"
+    rc="$(AS cat "$TH/.lab/$name.rc" 2>/dev/null | grep -Eo '^[0-9]+$' || true)"
     [ -n "$rc" ] && break
     sleep 3
   done
@@ -55,7 +61,7 @@ tx_wait() {   # tx_wait <name> [timeout_sec] → 종료코드 반환, 로그 출
   return "$rc"
 }
 tx_run() { tx_start "$1" "$2" && tx_wait "$1" "${3:-1800}"; }
-tx_done() { [ -n "$(AS cat "$TH/.lab/$1.rc" 2>/dev/null)" ]; }
+tx_done() { AS cat "$TH/.lab/$1.rc" 2>/dev/null | grep -Eq '^[0-9]+$'; }
 
 # 화면의 UI 요소를 텍스트(정규식)로 찾아 탭 — 확인창 '예/아니오' 자동 응답용
 tap_text() {  # tap_text <regex> [timeout_sec]

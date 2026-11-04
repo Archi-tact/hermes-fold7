@@ -37,7 +37,7 @@ say "공유 저장소 권한 요청 (팝업에서 '허용')"
 if [ "${HERMES_NONINTERACTIVE:-0}" = 1 ]; then
   echo "(비대화형 모드: 저장소 권한 요청 생략)"
 else
-  termux-setup-storage || true
+  if [ -d "$HOME/storage/shared" ]; then echo "(이미 허용됨)"; else termux-setup-storage || true; fi
 fi
 
 say "작업 폴더 생성"

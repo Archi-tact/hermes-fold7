@@ -211,6 +211,13 @@ if launch org.fossify.math; then
   echo "     좌표 탭(9 버튼) 응답 $(grep '^{' <<<"$r" | tail -1) → 결과 칸 '$RES9'"
   [[ "$RES9" == *9* ]] && ok "⑤ 좌표 탭이 앱에 전달됨 (계산기 9)" || bad "⑤ 좌표 탭 전달 안 됨 (결과 '$RES9')"
 fi
+if launch com.android.settings; then   # 같은 스와이프로 설정 목록이 스크롤되는지
+  dump; F0="$(jq -r '[.nodes[] | select(.id // "" | test("title$"))][0].text // empty' <<<"$D")"
+  ph gs1 hands-swipe $((SW/2)) $((SH*75/100)) $((SW/2)) $((SH*30/100)) 300 >/dev/null; sleep 1.5; dump
+  F1="$(jq -r '[.nodes[] | select(.id // "" | test("title$"))][0].text // empty' <<<"$D")"
+  echo "     설정 목록 첫 항목: '$F0' → 스와이프 후 '$F1'"
+  [ -n "$F1" ] && [ "$F0" != "$F1" ] && ok "⑤ 스와이프 제스처로 목록 스크롤됨" || bad "⑤ 스와이프로 목록 스크롤 안 됨"
+fi
 AS logcat -d -s HermesHands | grep -iE 'gesture|overlay|cancel' | tail -5 | sed 's/^/     log: /'
 echo "== ⑤ 게임 2048 → 스와이프로 직접 플레이"
 if [ -n "$GAME" ] && launch "$GAME"; then
@@ -343,6 +350,12 @@ echo "== 세션 종료"
 ph sp hands-stop >/dev/null; sleep 1
 S="$(ph st9 hands-status)"; [ "$(jqv .session "$S")" = false ] && ok "세션 종료 · 보호막 해제" || bad "세션 종료"
 snap "done"
+# 참고 진단: 보호막이 꺼진 상태에서 안드로이드 기본 입력(adb)으로 같은 게임을 스와이프하면 반응하는지
+if [ -n "$GAME" ]; then
+  AS monkey -p "$GAME" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1; sleep 3
+  h0="$(board_sig)"; for d in "$GX $((GY+R)) $GX $((GY-R))" "$((GX-R)) $GY $((GX+R)) $GY" "$GX $((GY-R)) $GX $((GY+R))" "$((GX+R)) $GY $((GX-R)) $GY"; do AS input swipe $d 180; sleep 0.8; done
+  h1="$(board_sig)"; echo "     (참고) adb 기본 입력 스와이프 4회 → 판 $( [ "$h0" != "$h1" ] && echo 움직임 || echo '변화 없음 — 이 가상 기기에서 게임이 스와이프를 못 받음')"
+fi
 rec_stop "$ART/frames"
 AS logcat -d -s HermesHands > "$ART/hands-logcat.txt" 2>/dev/null
 echo; echo "RESULT: PASS=$PASS FAIL=$FAIL  (실제 앱 조작)"

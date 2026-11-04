@@ -88,12 +88,15 @@ wait_boot() {  # wait_boot <timeout_sec> → 0: 부팅 완료 + 패키지 서비
   done
   return 1
 }
-diag() {
+diag() {   # 진단은 실패해도 스크립트를 멈추지 않음 (set -e 우회)
+  set +e
   echo "---- 진단: docker ps / logs"; docker ps -a --filter "name=$NAME"; docker logs --tail 50 "$NAME" 2>&1
   echo "---- 진단: getprop boot"; adb -s 127.0.0.1:5555 shell getprop 2>/dev/null | grep -E 'boot|init.svc.(zygote|surfaceflinger|servicemanager)' | head -30
   echo "---- 진단: logcat (E/F)"; adb -s 127.0.0.1:5555 logcat -d -b all '*:E' 2>/dev/null | tail -60
   echo "---- 진단: dmesg"; dmesg 2>/dev/null | grep -iE 'binder|avc|redroid|segfault' | tail -30
   echo "---- 진단: binder"; ls -la /dev/binder* /dev/binderfs 2>&1 | head; lsmod | grep -E 'binder|ashmem'
+  set -e
+  return 0
 }
 
 # 시도할 버전: 지정 버전 → (실패 시) 안정 버전들로 자동 대체

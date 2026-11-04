@@ -51,6 +51,7 @@ EOF
   else echo "⚠ 다운로드 실패 — 나중에 Releases 의 hands-latest 에서 받으세요"; fi
 fi
 
+[ "${HERMES_YES:-}" = 1 ] || read -r -p "Hermes Hands 설치를 마쳤거나 건너뛰려면 엔터 → 브라우저를 엽니다 " _ </dev/tty || true
 termux-open-url "http://127.0.0.1:${FOLD_PORT:-9130}" 2>/dev/null || true
 cat <<EOF
 

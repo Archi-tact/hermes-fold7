@@ -25,15 +25,22 @@ mkdir -p "$STATE"; chmod 700 "$STATE"
 
 # Hermes 실행 명령 + Hermes 가 보는 경로(proot 는 게스트 안 경로가 다름)
 if [ "$MODE" = proot ]; then
-  HC=hermes-proot
-  ROOTFS="${PREFIX:-/data/data/com.termux/files/usr}/var/lib/proot-distro/installed-rootfs/${PROOT_DISTRO:-debian}"
-  H_HOST="$ROOTFS/root/.hermes-fold"; H_GUEST="/root/.hermes-fold"
+  HC=hermes-proot; H_GUEST="/root/.hermes-fold"
+  # 게스트 파일은 proot-distro 로 직접 읽고 씀 (버전마다 rootfs 위치가 달라서 경로를 가정하지 않음)
+  G() { proot-distro login "${PROOT_DISTRO:-debian}" -- /usr/bin/env -i HOME=/root PATH=/usr/bin:/bin "$@"; }
 else
-  HC="${HERMES_CMD:-hermes}"
-  H_HOST="$HOME/.hermes-fold-srv"; H_GUEST="$H_HOST"
+  HC="${HERMES_CMD:-hermes}"; H_GUEST="$HOME/.hermes-fold-srv"
+  G() { "$@"; }
 fi
-WEB_HOST="$H_HOST/web"; WEB_GUEST="$H_GUEST/web"
-TOKEN_HOST="$H_HOST/desktop.token"; TOKEN_GUEST="$H_GUEST/desktop.token"
+WEB_GUEST="$H_GUEST/web"; TOKEN_GUEST="$H_GUEST/desktop.token"
+put_web() {   # ui/fold → Hermes 가 보는 위치
+  tar -C "$KIT/ui/fold" -cf - . | G sh -c "rm -rf '$WEB_GUEST' && mkdir -p '$WEB_GUEST' && tar -xf - -C '$WEB_GUEST' && chmod -R go-w '$H_GUEST'"
+}
+token() { G cat "$TOKEN_GUEST" 2>/dev/null; }
+make_token() {
+  token | grep -q . && return 0
+  openssl rand -base64 36 | tr -d '\n/+=' | G sh -c "umask 077; mkdir -p '$H_GUEST'; cat > '$TOKEN_GUEST'"
+}
 
 say() { printf '\033[1;35m[fold]\033[0m %s\n' "$*"; }
 need() { command -v "$1" >/dev/null 2>&1 || { [ -n "${PREFIX:-}" ] && pkg install -y "$2" >/dev/null 2>&1; }; command -v "$1" >/dev/null 2>&1 || { echo "❌ $1 필요 (pkg install $2)" >&2; exit 1; }; }
@@ -62,13 +69,10 @@ new_password() {
 
 setup() {
   need openssl openssl-tool
-  say "화면 파일 설치 → $WEB_HOST"
-  mkdir -p "$WEB_HOST"; rm -rf "${WEB_HOST:?}"/*
-  cp -R "$KIT/ui/fold/." "$WEB_HOST/"
-  chmod -R go-w "$H_HOST"
+  say "화면 파일 설치 → $WEB_GUEST ($MODE)"
+  put_web
   say "PC Desktop 연결용 토큰"
-  [ -s "$TOKEN_HOST" ] || { umask 077; openssl rand -base64 36 | tr -d '\n/+=' > "$TOKEN_HOST"; }
-  chmod 600 "$TOKEN_HOST"
+  make_token
   local ts; ts="$(tailscale_ip || true)"
   # 비-루프백 public_url → Hermes 가 '로그인 필수' 모드로 동작 (Tailscale 주소면 PC 접속 Host 도 허용됨)
   local pub="http://${ts:-hermes-fold.invalid}:$PORT"
@@ -93,7 +97,7 @@ EOF
 running() { [ -f "$STATE/server.pid" ] && kill -0 "$(cat "$STATE/server.pid")" 2>/dev/null; }
 
 start() {
-  [ -d "$WEB_HOST" ] || setup
+  G test -f "$WEB_GUEST/index.html" || setup
   if running; then say "이미 실행 중 (pid $(cat "$STATE/server.pid"))"; return; fi
   say "Hermes 서버 시작 (127.0.0.1:$PORT)"
   nohup $HC dashboard --skip-build --no-open --host 127.0.0.1 --port "$PORT" > "$STATE/server.log" 2>&1 &
@@ -129,7 +133,7 @@ remote_on() {
 ✅ PC 연결 허용 (Tailscale 안에서만)
    PC 에서 Hermes Desktop → 'Connect to existing Hermes'
      URL           : http://$ts:$PORT
-     Session token : $(cat "$TOKEN_HOST")
+     Session token : $(token)
    끄기: bash scripts/80-hermes-fold.sh remote-off
 EOF
 }

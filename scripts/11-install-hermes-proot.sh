@@ -13,7 +13,10 @@ mkdir -p "$WORKSPACE"
 
 pkg install -y proot-distro openssh
 
-if [ ! -d "$PREFIX/var/lib/proot-distro/installed-rootfs/$DISTRO" ]; then
+# 이미 설치돼 있으면 건너뜀 (proot-distro 버전마다 저장 위치가 달라서 직접 로그인해 확인)
+if proot-distro login "$DISTRO" -- true >/dev/null 2>&1; then
+  echo "(이미 설치된 $DISTRO 사용)"
+else
   proot-distro install "$DISTRO"
 fi
 

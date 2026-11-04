@@ -37,7 +37,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: redroid 안드로이드 기동
-        run: sudo -E LAB_CI=1 REDROID_W=1080 REDROID_H=1920 REDROID_DPI=420 bash lab/redroid/setup-server.sh
+        # 러너 커널(6.x)엔 ashmem이 없어 Android 16 그래픽 스택이 죽음 → 14부터 시도 (실폰은 Android 16)
+        run: sudo -E LAB_CI=1 REDROID_VERSION=14.0.0_64only REDROID_FALLBACKS="13.0.0_64only 12.0.0_64only" REDROID_W=1080 REDROID_H=1920 REDROID_DPI=420 bash lab/redroid/setup-server.sh
       - name: (선택) API 키
         if: env.HAS_LAB_SECRETS == 'true'
         env: { LAB_SECRETS: "${{ secrets.LAB_SECRETS_ENV }}" }

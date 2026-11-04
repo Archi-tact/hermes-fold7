@@ -13,6 +13,14 @@ LOG_DIR="$HOME/.hermes-bridge/logs"; mkdir -p "$LOG_DIR"
   HERMES_CMD="$([ "$MODE" = proot ] && echo hermes-proot || echo hermes)" \
   bash "$HOME/hermes-fold7/scripts/70-skills-storage.sh" export >> "$LOG_DIR/skills-export.log" 2>&1
 
+# Hermes Fold 폰 화면 서버 (설치돼 있으면) — 부팅 후 Chrome/홈 화면 아이콘으로 바로 사용
+if [ -d "$HOME/.hermes-fold" ] && [ -x "$HOME/hermes-fold7/scripts/80-hermes-fold.sh" ]; then
+  HERMES_MODE="$MODE" bash "$HOME/hermes-fold7/scripts/80-hermes-fold.sh" start >> "$LOG_DIR/fold.log" 2>&1
+  termux-notification --id hermes-fold --ongoing --title "Hermes" --content "Hermes Fold 실행 중 · 눌러서 열기" \
+    --action "termux-open-url http://127.0.0.1:${FOLD_PORT:-9130}" \
+    --button1 "끄기" --button1-action "bash $HOME/hermes-fold7/scripts/80-hermes-fold.sh stop; termux-notification-remove hermes-fold"
+fi
+
 # 게이트웨이는 사용자가 명시적으로 켰을 때만 (touch ~/.hermes-bridge/gateway.enabled)
 [ -f "$HOME/.hermes-bridge/gateway.enabled" ] || exit 0
 

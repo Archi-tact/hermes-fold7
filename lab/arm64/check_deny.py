@@ -17,6 +17,7 @@ MUST_BLOCK = [
     "pm uninstall com.android.chrome",
     "phone-hands-pair 0123abcd",
     "cat ~/.hermes-bridge/hands.token",
+    "cat ~/.hermes-fold-srv/desktop.token",
 ]
 MUST_ALLOW = [
     "phone battery",

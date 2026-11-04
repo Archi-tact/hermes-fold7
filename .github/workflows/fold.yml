@@ -30,13 +30,11 @@ jobs:
           curl -fsSL https://hermes-agent.nousresearch.com/install.sh -o "$RUNNER_TEMP/install.sh"
           bash "$RUNNER_TEMP/install.sh" --non-interactive --skip-browser --skip-computer-use
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-      - name: 모델 설정 (NVIDIA) + 승인 모드
+      - name: 승인 모드 (모델 · API 키는 일부러 비워 둠 → 화면의 첫 실행 설정에서 입력)
         run: |
           hermes --version
-          hermes config set model.provider nvidia
-          hermes config set model.default "$NVIDIA_MODEL"
           hermes config set approvals.mode manual
-          if [ -n "$NVIDIA_API_KEY" ]; then hermes config set NVIDIA_API_KEY "$NVIDIA_API_KEY" >/dev/null; echo "HAS_KEY=1" >> "$GITHUB_ENV"; else echo "HAS_KEY=0" >> "$GITHUB_ENV"; fi
+          if [ -n "$NVIDIA_API_KEY" ]; then echo "HAS_KEY=1" >> "$GITHUB_ENV"; else echo "HAS_KEY=0" >> "$GITHUB_ENV"; fi
       - name: Hermes Fold 설치 + 시작 + PC 연결 허용
         shell: bash
         run: |

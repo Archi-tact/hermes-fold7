@@ -42,6 +42,27 @@ async function waitTurn(page, ms = 240000) {   // 답변이 끝날 때까지 (�
   title === "Hermes Fold" ? ok("Hermes Fold 화면 표시") : bad("화면 제목: " + title);
   await shot(page, "cover-start");
 
+  console.log("== 2b. 첫 실행: 화면에서 API 키 입력 (터미널 없이)");
+  const sheet = await page.waitForSelector("#setup.on", { timeout: 20000 }).catch(() => null);
+  sheet ? ok("API 키가 없으면 첫 실행 설정 화면이 자동으로 뜸") : bad("첫 실행 설정 화면 안 뜸");
+  await shot(page, "cover-setup");
+  if (sheet && process.env.HAS_KEY === "1") {
+    await page.click('.prov[data-id="nvidia"]');
+    await page.fill("#apiKey", process.env.NVIDIA_API_KEY);
+    await page.fill("#modelName", process.env.NVIDIA_MODEL || "nvidia/nemotron-3-ultra-550b-a55b");
+    await page.click("#setupSave");
+    const saved = await page.waitForSelector("#setupMsg.ok", { timeout: 30000 }).catch(() => null);
+    saved ? ok("API 키 · 모델 저장 (Hermes 공식 설정 API)") : bad("저장 실패: " + await page.textContent("#setupMsg"));
+    await page.waitForSelector("#setup.on", { state: "detached", timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(2000);
+    const m = await page.textContent("#model");
+    /nemotron/.test(m) ? ok("상단에 선택한 모델 표시: " + m.trim()) : bad("모델 표시: " + m);
+    // 다시 열어도 키가 '저장됨' 으로 인식되는지 (새로고침 후 설정 화면이 자동으로 안 떠야 함)
+    await page.reload(); await page.waitForSelector("#conn.on", { timeout: 60000 }).catch(() => {});
+    await page.waitForTimeout(3000);
+    (await page.locator("#setup.on").count()) === 0 ? ok("새로고침 후에도 설정 유지 (다시 묻지 않음)") : bad("설정 화면이 또 뜸");
+  }
+
   if (process.env.HAS_KEY === "1") {
     console.log("== 3. 실제 모델과 대화 (스트리밍)");
     await page.fill("#input", "안녕! 한 문장으로 너를 소개해줘.");

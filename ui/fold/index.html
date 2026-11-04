@@ -124,6 +124,22 @@ textarea{flex:1;border:0;outline:0;resize:none;background:none;color:var(--text)
   .btn-side{display:none}
 }
 .login{max-width:360px;margin:18vh auto;padding:24px;text-align:center}
+/* 모델 · API 키 설정 */
+.modal{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.45);display:none;align-items:flex-end;justify-content:center}
+.modal.on{display:flex}
+.sheet{background:var(--panel);width:min(560px,100%);max-height:92dvh;overflow:auto;border-radius:20px 20px 0 0;padding:20px 18px calc(18px + env(safe-area-inset-bottom));border:1px solid var(--line)}
+@media (min-width:700px){.modal{align-items:center}.sheet{border-radius:20px}}
+.sheet h3{margin:0 0 4px;font-size:19px;letter-spacing:-.01em} .sheet .sub{color:var(--muted);font-size:14px;margin-bottom:14px}
+.provs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+.prov{border:1px solid var(--line);border-radius:12px;padding:10px 12px;text-align:left;background:var(--bg)}
+.prov b{display:block;font-size:14px} .prov small{color:var(--muted);font-size:12px}
+.prov.on{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent);background:var(--accent-soft)}
+.field{display:block;margin:10px 0} .field span{display:block;font-size:13px;color:var(--muted);margin-bottom:4px}
+.field input,.field select{width:100%;padding:11px 12px;border-radius:11px;border:1px solid var(--line);background:var(--bg);color:var(--text);font:15px var(--sans)}
+.field input:focus,.field select:focus{outline:0;border-color:var(--accent)}
+.sheet .row{display:flex;gap:8px;margin-top:14px} .sheet .row .btn{flex:1;padding:11px}
+.note{font-size:12.5px;color:var(--faint);margin-top:10px;line-height:1.5}
+.msgline{font-size:14px;margin-top:10px;min-height:20px} .msgline.ok{color:var(--ok)} .msgline.bad{color:var(--bad)}
 </style>
 </head>
 <body>
@@ -139,7 +155,7 @@ textarea{flex:1;border:0;outline:0;resize:none;background:none;color:var(--text)
       <button class="icon btn-side" id="openSide" aria-label="대화 목록">☰</button>
       <span class="dot" id="conn" title="연결 상태"></span>
       <div class="title" id="title">Hermes</div>
-      <span class="model" id="model">…</span>
+      <button class="model" id="model" title="모델 · API 키">…</button>
       <button class="icon btn-phone" id="openPhone" aria-label="폰 패널">📱</button>
     </header>
     <section class="chat" id="chat"><div class="inner" id="msgs">
@@ -183,6 +199,18 @@ textarea{flex:1;border:0;outline:0;resize:none;background:none;color:var(--text)
   </aside>
 </div>
 <div class="scrim" id="scrim"></div>
+<div class="modal" id="setup" role="dialog" aria-modal="true" aria-labelledby="setupTitle">
+  <div class="sheet">
+    <h3 id="setupTitle">모델 · API 키</h3>
+    <div class="sub" id="setupSub">사용할 AI 를 고르고 API 키만 넣으면 바로 시작해요. 키는 이 폰의 Hermes 설정에만 저장돼요.</div>
+    <div class="provs" id="provs"></div>
+    <label class="field"><span id="keyLabel">API 키</span><input id="apiKey" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="nvapi-…"></label>
+    <label class="field"><span>모델</span><input id="modelName" list="modelList" autocapitalize="off" spellcheck="false"><datalist id="modelList"></datalist></label>
+    <div class="note" id="keyHelp"></div>
+    <div class="msgline" id="setupMsg"></div>
+    <div class="row"><button class="btn" id="setupCancel">닫기</button><button class="btn pri" id="setupSave">저장하고 시작</button></div>
+  </div>
+</div>
 
 <script>
 "use strict";
@@ -381,7 +409,8 @@ async function connect() {
       retry = 0; $("conn").className = "dot on";
       try { await call("client.capabilities", { server_requests: true }); } catch (_) {}
       await loadSessions();
-      if (!S.sid) await newSession(); else await resume(S.sid);
+      if (!S.sid) await newSession(); else await resume(S.sid).catch(() => newSession());
+      checkSetup();
     };
   } catch (e) { if (String(e.message) !== "login") setTimeout(connect, 3000); }
 }
@@ -450,6 +479,80 @@ $("openPhone").onclick = () => { $("phone").classList.add("open"); $("scrim").cl
 $("closePhone").onclick = closeDrawers; $("scrim").onclick = closeDrawers;
 S.sid = sessionStorage.getItem("fold.sid");
 autosize(); renderHands();
+
+
+/* ───────────── 모델 · API 키 (처음 실행 시 자동 표시) ───────────── */
+const PROVIDERS = [
+  { id: "nvidia", name: "NVIDIA", tag: "무료 · 추천", env: "NVIDIA_API_KEY", ph: "nvapi-…", url: "https://build.nvidia.com",
+    help: "build.nvidia.com 로그인 → 아무 모델 → 'Get API Key' 에서 무료 키 발급", models: ["nvidia/nemotron-3-ultra-550b-a55b", "nvidia/nemotron-3-super-120b-a12b", "nvidia/nemotron-3.5-super-vl-120b-a12b", "moonshotai/kimi-k2.6", "z-ai/glm-5.3"] },
+  { id: "openai-api", name: "OpenAI", tag: "유료", env: "OPENAI_API_KEY", ph: "sk-…", url: "https://platform.openai.com/api-keys",
+    help: "platform.openai.com → API keys → Create new secret key", models: ["gpt-5.5", "gpt-5.4-mini", "gpt-6-luna"] },
+  { id: "anthropic", name: "Claude", tag: "유료", env: "ANTHROPIC_API_KEY", ph: "sk-ant-…", url: "https://console.anthropic.com",
+    help: "console.anthropic.com → API Keys → Create Key", models: ["claude-sonnet-5", "claude-opus-5-5", "claude-fable-5.1"] },
+  { id: "gemini", name: "Gemini", tag: "무료 한도", env: "GEMINI_API_KEY", ph: "AIza…", url: "https://aistudio.google.com/apikey",
+    help: "aistudio.google.com/apikey → Create API key", models: ["gemini-3.8-flash", "gemini-3.1-pro-preview"] },
+  { id: "openrouter", name: "OpenRouter", tag: "여러 모델", env: "OPENROUTER_API_KEY", ph: "sk-or-…", url: "https://openrouter.ai/keys",
+    help: "openrouter.ai/keys → Create Key · 모델 이름은 openrouter.ai/models 에서 복사", models: [] },
+];
+let pick = PROVIDERS[0];
+async function api(path, opts = {}) {
+  const r = await fetch(path, { credentials: "include", ...opts, headers: { "Content-Type": "application/json", ...(opts.headers || {}) } });
+  if (r.status === 401) { location.href = "/auth/login?next=/"; throw new Error("login"); }
+  const t = await r.text(); let j = null; try { j = JSON.parse(t); } catch (_) {}
+  if (!r.ok) throw new Error((j && (j.detail || j.error || j.message)) || t.slice(0, 160) || r.status);
+  return j;
+}
+function renderProviders() {
+  $("provs").innerHTML = PROVIDERS.map((p) => `<button class="prov${p === pick ? " on" : ""}" data-id="${p.id}"><b>${p.name}</b><small>${p.tag}</small></button>`).join("");
+  $("provs").querySelectorAll(".prov").forEach((b) => b.onclick = () => { pick = PROVIDERS.find((p) => p.id === b.dataset.id); renderProviders(); });
+  $("keyLabel").textContent = `${pick.name} API 키`;
+  $("apiKey").placeholder = pick.ph;
+  $("modelList").innerHTML = pick.models.map((m) => `<option value="${esc(m)}">`).join("");
+  if (!pick.models.includes($("modelName").value) || !$("modelName").value) $("modelName").value = pick.models[0] || "";
+  $("modelName").placeholder = pick.models[0] || "예: anthropic/claude-sonnet-5";
+  $("keyHelp").innerHTML = `🔑 ${esc(pick.help)} — <a href="${pick.url}" target="_blank" rel="noopener" style="color:var(--accent)">열기</a>`;
+}
+function openSetup(first) {
+  if (DEMO) return;
+  $("setupSub").textContent = first ? "처음 오셨네요! 사용할 AI 를 고르고 API 키만 넣으면 바로 시작해요. 키는 이 폰의 Hermes 설정에만 저장돼요."
+                                    : "다른 AI 나 모델로 바꿀 수 있어요. 키를 비워 두면 이미 저장된 키를 그대로 써요.";
+  $("setupMsg").textContent = ""; $("setupMsg").className = "msgline";
+  renderProviders(); $("setup").classList.add("on"); setTimeout(() => $("apiKey").focus(), 50);
+}
+async function saveSetup() {
+  const key = $("apiKey").value.trim(), model = $("modelName").value.trim(), m = $("setupMsg");
+  if (!model) { m.textContent = "모델 이름을 넣어 주세요"; m.className = "msgline bad"; return; }
+  $("setupSave").disabled = true; m.className = "msgline"; m.textContent = "저장하는 중…";
+  try {
+    if (key) await api("/api/env", { method: "PUT", body: JSON.stringify({ key: pick.env, value: key }) });
+    else {
+      const env = await api("/api/env");
+      if (!(env[pick.env] && env[pick.env].is_set)) throw new Error(`${pick.name} API 키를 넣어 주세요`);
+    }
+    await api("/api/model/set", { method: "POST", body: JSON.stringify({ scope: "main", provider: pick.id, model }) });
+    try { await call("reload.env", {}); } catch (_) {}
+    $("apiKey").value = "";
+    m.textContent = "✓ 저장됨 — 새 대화를 시작해요"; m.className = "msgline ok";
+    $("model").textContent = model;
+    setTimeout(() => { $("setup").classList.remove("on"); newSession().then(loadSessions); }, 700);
+  } catch (e) { m.textContent = "✕ " + e.message; m.className = "msgline bad"; }
+  finally { $("setupSave").disabled = false; }
+}
+async function checkSetup() {
+  try {
+    const [info, env] = await Promise.all([api("/api/model/info"), api("/api/env")]);
+    if (info && info.model) $("model").textContent = info.model;
+    const cur = PROVIDERS.find((p) => p.id === (info && info.provider));
+    if (cur) pick = cur;
+    const anyKey = PROVIDERS.some((p) => env[p.env] && env[p.env].is_set);
+    const curKey = cur ? env[cur.env] && env[cur.env].is_set : anyKey;
+    if (!info || !info.model || !curKey) openSetup(true);
+  } catch (e) { if (String(e.message) !== "login") console.warn("setup check", e); }
+}
+$("model").onclick = () => openSetup(false);
+$("setupCancel").onclick = () => $("setup").classList.remove("on");
+$("setupSave").onclick = saveSetup;
+$("apiKey").addEventListener("keydown", (e) => { if (e.key === "Enter") saveSetup(); });
 
 /* ───────────── 데모 모드 (?demo) — 서버 없이 화면 미리보기 ───────────── */
 const Demo = {

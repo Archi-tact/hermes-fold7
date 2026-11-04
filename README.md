@@ -3,6 +3,18 @@
 Nous Research의 **Hermes Agent**를 갤럭시 폴드7(Android, aarch64)에서 **폰 단독으로** 돌리기 위한 설치·보안·자동화 키트.
 폰 폴더에서 개발하고, 폰 기능(알림·카메라·위치·SMS·화면 조작)을 다루고, 자동화(크론·텔레그램 원격)까지 할 수 있습니다.
 
+## ⚡ 빠른 시작 — 폰 하나로, API 키만 넣으면 끝
+
+1. 폰에 설치: **Termux**, **Termux:API**, **Termux:Boot** (GitHub 또는 F-Droid 판, 셋 다 같은 출처)
+2. Termux 에서 한 줄:
+
+```bash
+pkg install -y git && git clone https://github.com/Archi-tact/hermes-fold7 ~/hermes-fold7 && bash ~/hermes-fold7/scripts/install.sh
+```
+
+3. 끝나면 브라우저가 열림 → 화면에 나온 아이디 `fold` / 비밀번호로 로그인 → **AI 고르고 API 키 입력** (NVIDIA 무료 키 추천)
+4. Chrome ⋮ → **홈 화면에 추가** → 앱처럼 사용. 재부팅해도 자동으로 켜짐. PC 는 필요 없음.
+
 > 기준: Hermes `main` 문서 (2026-11-01). **공식 Termux 패키지는 현재 "고장(수정 중)" 공지 상태**라서 Plan B를 같이 제공합니다.
 
 ---

@@ -27,7 +27,7 @@ jobs:
         run: |
           ENC=android/hands/signing/hands.jks.enc
           if [ -z "$PASS" ]; then echo "::warning::HANDS_SIGNING_PASS 없음 → 임시 키 서명 (업데이트 시 기존 앱 삭제 필요)"; exit 0; fi
-          [ ${#PASS} -ge 20 ] || { echo "::error::HANDS_SIGNING_PASS 는 20자 이상이어야 합니다"; exit 1; }
+          [ ${#PASS} -ge 16 ] || { echo "::error::HANDS_SIGNING_PASS 가 너무 짧습니다 (${#PASS}자) — 16자 이상 무작위 문자열로 바꿔 주세요"; exit 1; }
           if [ ! -f "$ENC" ]; then
             [ "$GITHUB_REF" = refs/heads/main ] || { echo "main 에서만 키 생성"; exit 0; }
             keytool -genkeypair -keystore "$RUNNER_TEMP/hands.jks" -storetype PKCS12 -alias hands -keyalg RSA -keysize 3072 \

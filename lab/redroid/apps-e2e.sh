@@ -69,8 +69,11 @@ fdroid_install() {  # fdroid_install <package>
   return 1
 }
 echo "== 0. 실제 앱 설치 + Hermes Hands 연결"
-APPS=(org.fossify.math org.fossify.notes org.wikipedia com.uberspot.a2048)
-for p in "${APPS[@]}"; do fdroid_install "$p" && ok "앱 설치: $p" || bad "앱 설치: $p"; done
+AS cmd uimode night no >/dev/null 2>&1          # 시작 상태: 라이트 모드 (Hands 켜기 전에 바꿔 둠)
+for p in org.fossify.math org.fossify.notes org.wikipedia; do fdroid_install "$p" && ok "앱 설치: $p" || bad "앱 설치: $p"; done
+GAME=""   # 오픈소스 2048 게임 (첫 번째로 받아지는 것)
+for p in com.tpcstld.twozerogame com.uberspot.a2048; do fdroid_install "$p" && { GAME="$p"; break; }; done
+[ -n "$GAME" ] && ok "앱 설치: 게임 $GAME" || bad "앱 설치: 2048 게임"
 A install -r "$APK" >/dev/null && ok "Hermes Hands 설치" || bad "Hermes Hands 설치"
 AS settings put secure enabled_accessibility_services "$PKG/$PKG.HandsService"
 AS settings put secure accessibility_enabled 1
@@ -79,17 +82,16 @@ printf '%s' "$TOKEN" > "$WORK/tok"; push_termux "$WORK/tok" ".hermes-bridge/hand
 READY=0   # 접근성 서비스가 뜬 뒤 로컬 소켓이 열릴 때까지 대기
 for k in $(seq 1 15); do S="$(ph "w$k" hands-status)"; [ "$(jqv .ok "$S")" = true ] && { READY=1; break; }; sleep 2; done
 [ $READY = 1 ] && ok "브리지 ↔ Hermes Hands 연결" || { bad "Hermes Hands 응답 없음"; echo "$S"; }
-AS cmd uimode night no >/dev/null 2>&1
 AS input keyevent KEYCODE_HOME
 
 rec_start "$ART/frames"
 trap 'rec_stop "$ART/frames"; rm -rf "$WORK"' EXIT
 
 echo "== 세션 시작 (설정·계산기·메모·위키백과·2048만 허용, 15분)"
-ph_bg st hands-start 15 "com.android.settings,org.fossify.math,org.fossify.notes,org.wikipedia,com.uberspot.a2048" "실제 앱 5개 조작 테스트"
+ph_bg st hands-start 15 "com.android.settings,org.fossify.math,org.fossify.notes,org.wikipedia,${GAME:-com.tpcstld.twozerogame}" "실제 앱 5개 조작 테스트"
 tap_text '^(Yes|YES|예|확인|OK)$' 40 "session-confirm" || bad "세션 확인창 미표시"
 tx_wait st 60 >/dev/null; S="$(AS cat "$TH/.lab/st.log")"
-[ "$(jqv .ok "$S")" = true ] && ok "세션 승인" || { bad "세션 시작"; echo "$S"; }
+[ "$(jqv .ok "$S")" = true ] && ok "세션 승인" || { bad "세션 시작"; echo "$S"; AS logcat -d -s HermesHands | tail -20; }
 
 # ---------- ① 설정: 다크 모드 켜기 ----------
 echo "== ① 설정 → 디스플레이 → 다크 모드 켜기"
@@ -167,7 +169,7 @@ b=sys.stdin.buffer.read(); w,h=struct.unpack("<II",b[:8]); hdr=len(b)-w*h*4
 print(hashlib.md5(b[hdr+w*4*int(h*.30):hdr+w*4*int(h*.85)]).hexdigest())'
 }
 echo "== ⑤ 게임 2048 → 스와이프로 직접 플레이"
-if launch com.uberspot.a2048; then
+if [ -n "$GAME" ] && launch "$GAME"; then
   sleep 3; dismiss; show 15
   snap "game-start"
   read -r SW SH < <(AS wm size | grep -oE '[0-9]+x[0-9]+' | tail -1 | tr 'x' ' ')

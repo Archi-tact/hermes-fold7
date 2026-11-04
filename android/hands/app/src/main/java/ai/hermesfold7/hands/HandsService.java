@@ -36,6 +36,7 @@ import java.io.FileOutputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
@@ -121,6 +122,7 @@ public class HandsService extends AccessibilityService {
 
     private void shutdown() {
         instance = null;
+        serving = false;
         try { if (server != null) server.close(); } catch (Exception ignored) { }
         if (main != null) main.post(this::removeOverlay);
         active = false;
@@ -174,15 +176,25 @@ public class HandsService extends AccessibilityService {
     }
 
     // ───────────────────────── 로컬 서버 ─────────────────────────
+    private volatile boolean serving;
+
+    /** 서비스가 다시 붙을 때 이전 소켓이 아직 닫히는 중일 수 있어, 열릴 때까지 재시도하고 죽으면 다시 연다. */
     private void startServer() {
+        serving = true;
         Thread t = new Thread(() -> {
-            try {
-                server = new ServerSocket(PORT, 8, InetAddress.getByName("127.0.0.1"));
-                while (!server.isClosed()) {
-                    Socket s = server.accept();
-                    new Thread(() -> handleClient(s), "hands-client").start();
-                }
-            } catch (Exception e) { Log.w(TAG, "server stopped: " + e); }
+            while (serving) {
+                try (ServerSocket ss = new ServerSocket()) {
+                    ss.setReuseAddress(true);
+                    ss.bind(new InetSocketAddress(InetAddress.getByName("127.0.0.1"), PORT), 8);
+                    server = ss;
+                    Log.i(TAG, "listening on 127.0.0.1:" + PORT);
+                    while (serving && !ss.isClosed()) {
+                        Socket s = ss.accept();
+                        new Thread(() -> handleClient(s), "hands-client").start();
+                    }
+                } catch (Exception e) { Log.w(TAG, "server: " + e); }
+                if (serving) try { Thread.sleep(1000); } catch (InterruptedException ie) { return; }
+            }
         }, "hands-server");
         t.setDaemon(true);
         t.start();

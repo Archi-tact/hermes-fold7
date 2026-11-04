@@ -44,6 +44,10 @@ declare -A POLICY=(
   [adb-screenshot]=confirm [adb-ui-dump]=confirm
   [adb-tap]=confirm [adb-swipe]=confirm [adb-text]=confirm [adb-key]=confirm
   [adb-setting-get]=allow [adb-shell]=deny
+  # Hermes Hands (접근성 앱) — 세션 시작만 사람 확인, 세션 안의 동작은 앱이 범위·시간·보호막으로 통제
+  [hands-status]=allow [hands-start]=confirm [hands-stop]=allow [hands-dump]=allow
+  [hands-click]=allow [hands-type]=allow [hands-scroll]=allow [hands-back]=allow [hands-home]=allow
+  [hands-launch]=allow [hands-tap]=allow [hands-swipe]=allow [hands-wait]=allow
 )
 if [ -f "$POLICY_FILE" ]; then
   while IFS='=' read -r k v; do
@@ -119,6 +123,28 @@ adb_done() { [ "$ADB_KILL_AFTER" = 1 ] && adb kill-server >/dev/null 2>&1; true;
 A() { adb shell -- "$@"; }   # 인자 배열 그대로 전달 (adb가 원격에서 공백 결합하므로 값 검증 필수)
 safe_word() { [[ "$1" =~ ^[A-Za-z0-9._:/-]+$ ]] || die "unsafe value: $1"; }
 
+# ---------- Hermes Hands 헬퍼 (127.0.0.1:47800, 토큰 인증 한 줄 JSON) ----------
+HANDS_PORT="${HANDS_PORT:-47800}"
+hands() {  # hands <cmd> [jq 인자들로 만든 추가 필드 JSON]
+  local extra="${2:-}" tok line
+  [ -n "$extra" ] || extra='{}'
+  [ -f "$BRIDGE_HOME/hands.token" ] || die "Hermes Hands 미연결: 앱에서 토큰 복사 후 Termux에서 'phone-hands-pair <토큰>'"
+  tok="$(head -c 200 "$BRIDGE_HOME/hands.token")"
+  exec 3<>"/dev/tcp/127.0.0.1/$HANDS_PORT" 2>/dev/null || die "Hermes Hands 앱 응답 없음 (접근성 서비스 켜짐 확인)"
+  jq -cn --arg t "$tok" --arg c "$1" --argjson x "$extra" '$x + {token:$t, cmd:$c}' >&3
+  IFS= read -r -t 90 line <&3 || line='{"ok":false,"error":"timeout"}'
+  exec 3>&- 3<&-
+  printf '%s\n' "$line"
+}
+pkg_ok() { [[ "$1" =~ ^[A-Za-z0-9_.]+$ ]] || die "bad package: $1"; }
+node_sel() {  # 숫자면 i, text:… / id:… 형태 지원
+  case "$1" in
+    text:*) jq -cn --arg v "${1#text:}" '{text:$v}' ;;
+    id:*)   jq -cn --arg v "${1#id:}" '{id:$v}' ;;
+    *)      int "$1"; jq -cn --argjson v "$1" '{i:$v}' ;;
+  esac
+}
+
 ts="$(date +%Y%m%d-%H%M%S)"
 case "$ACTION" in
   help)          printf '%s\n' "${!POLICY[@]}" | sort | while read -r k; do echo "$k=${POLICY[$k]}"; done ;;
@@ -153,5 +179,24 @@ case "$ACTION" in
   adb-key)       need 1 "KEYCODE(예: KEYCODE_HOME)"; [[ "$(arg 0)" =~ ^(KEYCODE_[A-Z0-9_]+|[0-9]{1,3})$ ]] || die "bad keycode"; adb_ready; A input keyevent "$(arg 0)" && echo '{"ok":true}'; adb_done ;;
   adb-setting-get) need 2 "system|secure|global KEY"; [[ "$(arg 0)" =~ ^(system|secure|global)$ ]] || die "namespace"; safe_word "$(arg 1)"; adb_ready; A settings get "$(arg 0)" "$(arg 1)"; adb_done ;;
   adb-shell)     need 1 "COMMAND..."; adb_ready; A "${ARGS[@]}"; rc=$?; adb_done; exit $rc ;;
+
+  hands-status)  hands status ;;
+  hands-start)   need 3 "MINUTES PKG[,PKG..] TITLE"; int "$(arg 0)"
+                 IFS=',' read -r -a PK <<< "$(arg 1)"; for p in "${PK[@]}"; do pkg_ok "$p"; done
+                 hands start "$(jq -cn --argjson m "$(arg 0)" --arg a "$(arg 1)" --arg t "$(arg 2)" '{minutes:$m, apps:($a|split(",")), title:$t}')" ;;
+  hands-stop)    hands stop ;;
+  hands-dump)    hands dump ;;
+  hands-click)   need 1 "INDEX | text:글자 | id:뷰ID"; hands click "$(node_sel "$(arg 0)")" ;;
+  hands-type)    need 2 "INDEX TEXT"; int "$(arg 0)"; hands type "$(jq -cn --argjson i "$(arg 0)" --arg v "$(arg 1)" '{i:$i, value:$v}')" ;;
+  hands-scroll)  dir="${ARGS[0]:-down}"; [[ "$dir" =~ ^(up|down)$ ]] || die "up|down"
+                 if [ -n "${ARGS[1]:-}" ]; then int "$(arg 1)"; hands scroll "$(jq -cn --arg d "$dir" --argjson i "$(arg 1)" '{dir:$d, i:$i}')"
+                 else hands scroll "$(jq -cn --arg d "$dir" '{dir:$d}')"; fi ;;
+  hands-back)    hands back ;;
+  hands-home)    hands home ;;
+  hands-launch)  need 1 "PACKAGE"; pkg_ok "$(arg 0)"; hands launch "$(jq -cn --arg p "$(arg 0)" '{package:$p}')" ;;
+  hands-tap)     need 2 "X Y"; int "$(arg 0)"; int "$(arg 1)"; hands tap "$(jq -cn --argjson x "$(arg 0)" --argjson y "$(arg 1)" '{x:$x, y:$y}')" ;;
+  hands-swipe)   need 4 "X1 Y1 X2 Y2 [MS]"; for i in 0 1 2 3; do int "$(arg $i)"; done; ms="${ARGS[4]:-400}"; int "$ms"
+                 hands swipe "$(jq -cn --argjson a "$(arg 0)" --argjson b "$(arg 1)" --argjson c "$(arg 2)" --argjson d "$(arg 3)" --argjson m "$ms" '{x1:$a,y1:$b,x2:$c,y2:$d,ms:$m}')" ;;
+  hands-wait)    ms="${ARGS[0]:-1000}"; int "$ms"; hands wait "$(jq -cn --argjson m "$ms" '{ms:$m}')" ;;
   *)             die "not implemented: $ACTION" ;;
 esac

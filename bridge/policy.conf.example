@@ -30,3 +30,9 @@ adb-swipe=confirm
 adb-text=confirm
 adb-key=confirm
 adb-shell=deny
+
+# Hermes Hands (화면 조작 앱): 세션 시작만 확인창, 세션 안 동작은 앱이 허용 앱·시간·보호막으로 통제
+hands-start=confirm
+hands-dump=allow
+hands-click=allow
+hands-type=allow

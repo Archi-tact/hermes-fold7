@@ -8,6 +8,11 @@ MODE_FILE="$HOME/.hermes-bridge/mode"         # apt | proot
 MODE="$(cat "$MODE_FILE" 2>/dev/null || echo apt)"
 LOG_DIR="$HOME/.hermes-bridge/logs"; mkdir -p "$LOG_DIR"
 
+# 스킬 보기용 사본을 /sdcard/Hermes/skills 로 갱신 (실패해도 무시)
+[ -x "$HOME/hermes-fold7/scripts/70-skills-storage.sh" ] && \
+  HERMES_CMD="$([ "$MODE" = proot ] && echo hermes-proot || echo hermes)" \
+  bash "$HOME/hermes-fold7/scripts/70-skills-storage.sh" export >> "$LOG_DIR/skills-export.log" 2>&1
+
 # 게이트웨이는 사용자가 명시적으로 켰을 때만 (touch ~/.hermes-bridge/gateway.enabled)
 [ -f "$HOME/.hermes-bridge/gateway.enabled" ] || exit 0
 

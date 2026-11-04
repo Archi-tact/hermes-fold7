@@ -29,7 +29,7 @@ echo "==> 2. 절대 금지 명령 (YOLO 모드에서도 차단)"
 DENY_JSON="$(jq -cn '[
   "termux-*", "adb", "adb *", "*phone-bridge*", "*.hermes-bridge*",
   "*authorized_keys*", "*sshd_config*", "*.hermes/config.yaml*", "*.hermes/.env*",
-  "su", "su *", "pm uninstall*", "pm clear*",
+  "su", "su *", "pm uninstall*", "pm clear*", "phone-hands-pair*", "*hands.token*",
   "rm -rf ~*", "rm -rf /sdcard*", "rm -rf /storage*", "rm -rf /data*",
   "git push --force*", "git push -f*",
   "*curl*|*sh*", "*wget*|*sh*", "*curl*|*bash*", "*wget*|*bash*"
@@ -41,8 +41,10 @@ set_cfg terminal.cwd "$WS"
 set_cfg HERMES_WRITE_SAFE_ROOT "$WS"      # write_file/patch는 작업폴더 밖에 못 씀 (.env에 저장)
 
 echo "==> 4. 스킬: 폰 브리지 스킬 연결 + 에이전트 생성 스킬 검사"
-rm -rf "$BH/client/skills/fold7-phone"
-cp -r "$HERE/skills/fold7-phone" "$BH/client/skills/"
+for sk in "$HERE"/skills/*/; do      # fold7-phone, fold7-hands …
+  rm -rf "$BH/client/skills/$(basename "$sk")"
+  cp -r "$sk" "$BH/client/skills/"
+done
 set_cfg skills.external_dirs "[\"$SKILLS_DIR\"]"
 set_cfg skills.guard_agent_created true
 

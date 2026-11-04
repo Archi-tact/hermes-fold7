@@ -16,6 +16,7 @@ install -m 755 "$HERE/bridge/phone" "$PREFIX/bin/phone"       # Plan A: Termux�
 # Termux:Boot·RUN_COMMAND·크론 같은 자동 실행에선 실패하므로 shebang을 Termux 경로로 고정
 sed -i "1s|^#!/usr/bin/env bash|#!$PREFIX/bin/bash|" "$PREFIX/bin/phone"
 install -m 755 "$HERE/bridge/phone" "$BH/client/phone"         # Plan B: proot 게스트 PATH에 노출
+install -m 700 "$HERE/bridge/phone-hands-pair" "$PREFIX/bin/phone-hands-pair"   # Hermes Hands 토큰 연결(사람 전용)
 [ -f "$BH/policy.conf" ] || install -m 600 "$HERE/bridge/policy.conf.example" "$BH/policy.conf"
 
 # ---- sshd: 로컬호스트 전용, 키 인증만 ----

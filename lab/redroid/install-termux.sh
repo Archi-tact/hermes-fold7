@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # lab/redroid/install-termux.sh — redroid에 Termux 3종 설치 후, 키트를 '폰에서 하듯' 그대로 실행
 #   sudo PLAN=auto bash lab/redroid/install-termux.sh      # auto: A 시도 → 실패 시 B
-#   PLAN=apt | proot 로 고정 가능
+#   PLAN=apt | proot 로 고정 가능, PLAN=none 은 Hermes 없이 브리지만 (Hermes Hands 데모용)
 #   (선택) lab/redroid/secrets.env 에 OPENROUTER_API_KEY=... 등을 넣으면 Hermes 실제 대화 스모크 테스트까지 수행
 set -Eeuo pipefail
 trap 'echo "[lab] ❌ 실패: ${BASH_SOURCE[0]##*/}:$LINENO → $BASH_COMMAND (rc=$?)" >&2' ERR
@@ -37,7 +37,7 @@ case "$ABI" in
   arm64-v8a) APK_RE='arm64-v8a.*\.apk$|universal.*\.apk$' ;;
   x86_64)    APK_RE='x86_64.*\.apk$|universal.*\.apk$'
              [ "$PLAN" = apt ] && { echo "❌ Plan A(공식 Termux 패키지)는 aarch64 전용 — x86_64에선 PLAN=proot" >&2; exit 1; }
-             PLAN=proot; export LAB_X86=1 ;;
+             [ "$PLAN" = none ] || PLAN=proot; export LAB_X86=1 ;;
   *) echo "❌ 지원하지 않는 ABI: $ABI" >&2; exit 1 ;;
 esac
 log "APK 다운로드 (ABI=$ABI, PLAN=$PLAN)"
@@ -94,6 +94,7 @@ EOF
 log "00-termux-bootstrap"; tx_run s1 "$WORK/s1.sh" 3600
 
 MODE=""
+[ "$PLAN" = none ] && MODE=none
 if [ "$PLAN" = apt ] || [ "$PLAN" = auto ]; then
   printf 'cd ~/hermes-fold7 && bash scripts/10-install-hermes-apt.sh\n' > "$WORK/s2a.sh"
   log "Plan A: 10-install-hermes-apt"
@@ -114,7 +115,7 @@ bash scripts/30-phone-bridge.sh
 # redroid는 무선 디버깅 대신 자체 adbd(5555) 사용 → 브리지에 고정 엔드포인트 지정
 echo 127.0.0.1:5555 > ~/.hermes-bridge/adb-endpoint
 adb start-server >/dev/null 2>&1; adb kill-server >/dev/null 2>&1 || true
-HERMES_MODE=$MODE bash scripts/20-harden.sh
+[ "$MODE" = none ] || HERMES_MODE=$MODE bash scripts/20-harden.sh
 EOF
 log "30-phone-bridge + 20-harden ($MODE)"; tx_run s3 "$WORK/s3.sh" 1800
 

@@ -6,6 +6,8 @@ LAB="$(cd "$(dirname "$0")" && pwd)"
 ART="$LAB/artifacts"
 [ -d "$ART" ] || { echo "artifacts 없음"; exit 0; }
 SUMMARY="${GITHUB_STEP_SUMMARY:-/dev/stdout}"
+BRANCH="${RESULTS_BRANCH:-lab-results}"
+HEADING="${RESULTS_TITLE:-📱 Android E2E 화면 (redroid + Termux + Hermes)}"
 
 # 1) 프레임 → GIF(결과 페이지용, 가볍게) + MP4(다운로드용, 선명하게)
 if ls "$ART"/frames/*.png >/dev/null 2>&1; then
@@ -30,18 +32,18 @@ if [ -n "${GITHUB_TOKEN:-}" ] && [ -n "${GITHUB_REPOSITORY:-}" ]; then
   PUB="$(mktemp -d)"
   cp "$ART"/e2e.gif "$PUB/" 2>/dev/null || true
   cp "$ART"/shots-small/*.png "$PUB/" 2>/dev/null || true
-  git -C "$PUB" init -q -b lab-results
+  git -C "$PUB" init -q -b "$BRANCH"
   git -C "$PUB" add -A
   git -C "$PUB" -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
     commit -q -m "lab results: run ${GITHUB_RUN_ID:-local}"
-  git -C "$PUB" push -q -f "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" lab-results \
-    && SHA="$(git -C "$PUB" rev-parse HEAD)" || echo "⚠ lab-results 게시 실패 (권한 확인: contents: write)"
+  git -C "$PUB" push -q -f "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$BRANCH" \
+    && SHA="$(git -C "$PUB" rev-parse HEAD)" || echo "⚠ $BRANCH 게시 실패 (권한 확인: contents: write)"
 fi
 RAW="https://raw.githubusercontent.com/${GITHUB_REPOSITORY:-}/${SHA}"
 
 # 3) 결과 페이지(Summary) 작성
 {
-  echo "## 📱 Android E2E 화면 (redroid + Termux + Hermes)"
+  echo "## $HEADING"
   if grep -q '^RESULT:' "$ART/e2e-result.txt" 2>/dev/null; then echo; echo "**$(grep '^RESULT:' "$ART/e2e-result.txt")**"; fi
   if [ -n "$SHA" ]; then
     echo; echo "### 전체 과정 (3배속)"
@@ -55,7 +57,7 @@ RAW="https://raw.githubusercontent.com/${GITHUB_REPOSITORY:-}/${SHA}"
     done
     echo "</tr></table>"
   fi
-  echo; echo "고화질 영상(e2e.mp4)·원본 스크린샷·Termux 로그·감사 로그: 아래 **Artifacts → android-e2e**"
+  echo; echo "고화질 영상(e2e.mp4)·원본 스크린샷·로그: 아래 **Artifacts**"
   if [ -f "$ART/e2e-result.txt" ]; then
     echo; echo "<details><summary>테스트 결과 전체</summary>"; echo; echo '```'; grep -E '^(==|OK|FAIL|RESULT)' "$ART/e2e-result.txt"; echo '```'; echo "</details>"
   fi

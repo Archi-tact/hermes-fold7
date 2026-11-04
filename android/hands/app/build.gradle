@@ -1,0 +1,41 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'ai.hermesfold7.hands'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'ai.hermesfold7.hands'
+        minSdk 26
+        targetSdk 35
+        versionCode 1
+        versionName '0.1.0'
+    }
+
+    signingConfigs {
+        // HANDS_KEYSTORE 환경변수가 있으면 고정 키로 서명(업데이트 설치 가능). 없으면 디버그 키.
+        stable {
+            def ks = System.getenv('HANDS_KEYSTORE')
+            if (ks) {
+                storeFile file(ks)
+                storePassword System.getenv('HANDS_KEYSTORE_PASSWORD')
+                keyAlias 'hands'
+                keyPassword System.getenv('HANDS_KEYSTORE_PASSWORD')
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig System.getenv('HANDS_KEYSTORE') ? signingConfigs.stable : signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}

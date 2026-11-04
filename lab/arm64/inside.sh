@@ -20,11 +20,11 @@ set_cfg approvals.timeout 120
 set_cfg approvals.cron_mode deny
 set_cfg approvals.single_query_mode deny
 set_cfg approvals.unattended_mode deny
-DENY='["termux-*","adb","adb *","*phone-bridge*","*.hermes-bridge*","*authorized_keys*","*sshd_config*","*.hermes/config.yaml*","*.hermes/.env*","su","su *","pm uninstall*","pm clear*","rm -rf ~*","rm -rf /sdcard*","rm -rf /storage*","rm -rf /data*","git push --force*","git push -f*","*curl*|*sh*","*wget*|*sh*","*curl*|*bash*","*wget*|*bash*"]'
+DENY='["termux-*","adb","adb *","*phone-bridge*","*.hermes-bridge*","*authorized_keys*","*sshd_config*","*.hermes/config.yaml*","*.hermes/.env*","su","su *","pm uninstall*","pm clear*","phone-hands-pair*","*hands.token*","rm -rf ~*","rm -rf /sdcard*","rm -rf /storage*","rm -rf /data*","git push --force*","git push -f*","*curl*|*sh*","*wget*|*sh*","*curl*|*bash*","*wget*|*bash*"]'
 set_cfg approvals.deny "$DENY"
 set_cfg terminal.cwd "$WS"
 set_cfg HERMES_WRITE_SAFE_ROOT "$WS"
-mkdir -p /root/skills && cp -r /kit/skills/fold7-phone /root/skills/
+mkdir -p /root/skills && cp -r /kit/skills/. /root/skills/
 set_cfg skills.external_dirs '["/root/skills"]'
 set_cfg skills.guard_agent_created true
 set_cfg unauthorized_dm_behavior ignore
@@ -34,4 +34,5 @@ grep -nE '^\s+cwd:|external_dirs|guard_agent_created|unauthorized_dm_behavior' /
 grep HERMES_WRITE_SAFE_ROOT /root/.hermes/.env
 (cd /opt/hermes-src && python3 /kit/lab/arm64/check_deny.py)
 echo "---- 스킬 인식 확인"
-hermes skills list 2>&1 | grep -i 'fold7-phone' && echo "SKILL: OK" || { echo "SKILL: NOT FOUND"; exit 1; }
+SL="$(hermes skills list 2>&1)"
+for sk in fold7-phone fold7-hands; do grep -qi "$sk" <<<"$SL" && echo "SKILL $sk: OK" || { echo "SKILL $sk: NOT FOUND"; exit 1; }; done

@@ -1,0 +1,17 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# phone-hands-pair — Hermes Hands 앱의 연결 토큰을 브리지에 저장 (사람이 직접 실행, 에이전트는 금지 규칙으로 차단)
+#   phone-hands-pair <토큰>     또는   phone-hands-pair    (클립보드에서 읽음)
+set -euo pipefail
+BH="${HERMES_BRIDGE_HOME:-$HOME/.hermes-bridge}"
+tok="${1:-}"
+if [ -z "$tok" ]; then
+  tok="$(termux-clipboard-get 2>/dev/null | tr -d '[:space:]')"
+  from_clip=1
+fi
+[[ "$tok" =~ ^[0-9a-f]{32,64}$ ]] || { echo "토큰 형식이 아닙니다. Hermes Hands 앱 → '토큰 복사' 후 다시 실행하세요." >&2; exit 1; }
+umask 077
+mkdir -p "$BH"
+printf '%s' "$tok" > "$BH/hands.token"
+chmod 600 "$BH/hands.token"
+[ "${from_clip:-0}" = 1 ] && termux-clipboard-set "" 2>/dev/null || true
+echo "✅ 연결됨. 확인: phone hands-status"

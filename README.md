@@ -92,6 +92,38 @@ bash scripts/50-autostart.sh apt --gateway     # Plan B면 proot
 cd ~/work && hermes --tui                      # Plan B: hermes-proot --tui
 ```
 
+### 화면: Hermes Fold (폰) + Hermes Desktop (PC)
+
+폰 전용 화면 — 접으면 채팅, 펼치면 채팅 + 📱 폰 실시간 패널(조작 진행·빠른 설정·읽은 화면 구조):
+
+```bash
+bash scripts/80-hermes-fold.sh setup
+```
+
+```bash
+bash scripts/80-hermes-fold.sh start
+```
+
+Chrome 에서 `http://127.0.0.1:9130` → 아이디 `fold` / setup 이 보여준 비밀번호 → ⋮ → **홈 화면에 추가**.
+
+PC 에서 클로드 코드 데스크탑 같은 화면으로 쓰기 (공식 Hermes Desktop, Tailscale 필요):
+
+```bash
+bash scripts/80-hermes-fold.sh remote-on
+```
+
+출력된 URL·Session token 을 Hermes Desktop → *Connect to existing Hermes* 에 입력. 끄기: `remote-off`.
+
+- 서버는 `127.0.0.1` 에만 열리고 로그인 필수 모드로 강제(폰의 다른 앱도 비밀번호 없이는 못 씀). 비밀번호는 scrypt 해시로만 저장.
+- PC 연결은 Tailscale 주소에서만 중계(socat) + 세션 토큰. 같은 와이파이의 다른 기기는 접근 불가.
+- 위험 명령의 승인은 채팅 안 카드(이번만 허용 / 이 대화에선 허용 / 거부)로.
+
+### 앱 조작 · 설정 직접 변경
+
+- 화면 조작: Hermes Hands 앱 — Releases → `hands-latest` → `hermes-hands.apk` 설치 → 접근성 켜기 → 앱에서 토큰 복사 → `phone-hands-pair`.
+- 설정은 화면 대신 `phone set dark on`, `phone set brightness 120`, `phone set volume media 7` … (무선 디버깅 필요).
+- 여러 단계는 `phone hands-run` 스크립트로 한 번에, 성공한 흐름은 `~/work/recipes/<이름>.json` 레시피로 저장 → `phone hands-run @이름`.
+
 ## 4. 개발 폴더
 
 - 기본 작업 폴더는 **`~/work`** (Termux 홈). 에이전트의 터미널 시작 위치와 `write_file` 허용 범위가 여기로 고정됩니다.
@@ -156,12 +188,18 @@ sms-send=deny          # 문자 발송 아예 금지
 | `scripts/50-autostart.sh`, `boot/10-hermes` | Termux:Boot 자동시작, 텔레그램 게이트웨이 |
 | `bridge/phone-bridge`, `bridge/phone` | 폰 기능 게이트웨이 / 클라이언트 |
 | `skills/fold7-phone/SKILL.md` | 에이전트에게 `phone` 사용법을 가르치는 Hermes 스킬 |
+| `scripts/60-weather-brief.sh` | 매일 날씨 브리핑 예약 작업 |
+| `scripts/70-skills-storage.sh` | 스킬을 내장 메모리로 내보내기 / 검토 후 가져오기 |
+| `scripts/80-hermes-fold.sh`, `ui/fold/` | 폰 전용 화면(Hermes Fold) + PC Desktop 원격 연결 |
+| `android/hands/` | Hermes Hands 앱 (접근성 · 보호막 · 일시정지 · 스크립트 실행) |
+| `skills/fold7-hands/SKILL.md` | 앱 조작 방법(읽기→스크립트→레시피)을 가르치는 스킬 |
 
 ## 9. 테스트 공간
 
 실폰 전에 검증: [`lab/README.md`](lab/README.md)
 - `lab/arm64` — Docker ARM64 컨테이너에서 Hermes 설치·보안설정·차단규칙·브리지 SSH 보안 테스트
 - `lab/redroid` — ARM 클라우드 VM에 진짜 안드로이드(redroid) + Termux를 올려 키트 전체 E2E 테스트
+- GitHub Actions: `hands`(보호막·일시정지), `apps`(실제 앱 6종 + 설정 직접 변경 + 레시피), `fold`(폰 화면 + PC 원격, 실제 모델), `weather`
 
 ## 10. 문제 해결
 

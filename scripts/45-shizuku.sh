@@ -10,7 +10,9 @@
 #   4) Termux 에서: bash ~/hermes-fold7/scripts/45-shizuku.sh
 set -euo pipefail
 # 안드로이드는 Download 폴더 '자체'를 고를 수 없어서 하위 폴더에 내보내는 경우가 많음 → 하위 폴더까지 찾기
-SRC="$(find "$HOME/storage/shared" /sdcard -maxdepth 4 -name rish_shizuku.dex -newermt '-30 days' 2>/dev/null | head -1 | xargs -r dirname)"
+# (/sdcard·~/storage/shared 는 바로가기라 끝에 / 를 붙여야 안으로 들어가서 찾음)
+DEX="$(find /storage/emulated/0/ "$HOME/storage/shared/" -maxdepth 4 -name rish_shizuku.dex 2>/dev/null | head -1)"
+SRC=""; [ -n "$DEX" ] && SRC="${DEX%/*}"
 [ -n "$SRC" ] && [ -f "$SRC/rish" ] || SRC=""
 [ -n "$SRC" ] || { echo "❌ rish 파일을 못 찾음 → Shizuku 앱 → '터미널 앱에서 Shizuku 사용' → 내보내기 → Download 안에 폴더 하나 만들어 선택"; exit 1; }
 echo "찾음: $SRC" 

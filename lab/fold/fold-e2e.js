@@ -75,7 +75,7 @@ async function waitTurn(page, ms = 240000) {   // 답변이 끝날 때까지 (�
     await shot(page, "cover-chat");
 
     console.log("== 4. 도구 실행 카드 (터미널 명령)");
-    await page.fill("#input", "터미널에서 `echo hermes-fold-ok` 를 실행하고 출력된 글자만 알려줘.");
+    await page.fill("#input", "terminal 도구로 `echo hermes-fold-ok` 명령을 꼭 실제로 실행하고, 출력된 글자만 그대로 알려줘.");
     await page.click("#send");
     await waitTurn(page).catch(() => {});
     const tools = await page.locator(".tool").count();
@@ -83,7 +83,7 @@ async function waitTurn(page, ms = 240000) {   // 답변이 끝날 때까지 (�
     tools > 0 && okTools > 0 ? ok(`도구 실행 카드 표시 (${okTools}/${tools} 완료)`) : bad(`도구 카드 ${okTools}/${tools}`);
     const allText = (await page.locator(".msg.ai").allTextContents()).join(" ");
     /hermes-fold-ok/.test(allText) ? ok("명령 결과를 답변에 반영") : bad("결과 문자열 없음");
-    await page.locator(".tool").first().click();          // 카드 펼쳐 보기
+    if (tools > 0) await page.locator(".tool").first().click().catch(() => {});   // 카드 펼쳐 보기
     await shot(page, "cover-tool");
 
     console.log("== 5. 위험 명령 → 화면에서 승인 카드");

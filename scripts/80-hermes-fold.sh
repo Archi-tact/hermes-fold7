@@ -93,8 +93,14 @@ if [ -f "$hb" ]; then age=$(( $(date +%s) - $(stat -c %Y "$hb") )); [ "$age" -lt
 PATH="/root/.hermes-bridge-client:$PATH" phone notify "Hermes" "$msg" "http://127.0.0.1:__PORT__" >/dev/null 2>&1 || true
 __HOOK__
 chmod 700 "$HH/agent-hooks/fold-notify.sh"
-HB="$(readlink -f "$(command -v hermes)")"; PY="$(dirname "$HB")/python"
-[ -x "$PY" ] || PY="$(head -1 "$HB" | sed 's/^#!//; s/ .*//')"
+# Hermes 를 불러올 수 있는 파이썬 찾기 (hermes 명령은 셸 래퍼일 수 있음)
+HB="$(readlink -f "$(command -v hermes)")"; PY=""
+for c in "$(dirname "$HB")/python" $(grep -aoE '/[^ "'"'"']*/bin/python[0-9.]*' "$HB" 2>/dev/null | head -3) \
+         "$HH/hermes-agent/venv/bin/python" "$HH/hermes-agent/.venv/bin/python" \
+         "${PREFIX:-/nonexistent}/lib/hermes-agent/venv/bin/python" "${PREFIX:-/nonexistent}/lib/hermes-agent/.venv/bin/python"; do
+  [ -x "$c" ] && "$c" -c 'import hermes_cli.config, agent.shell_hooks' 2>/dev/null && { PY="$c"; break; }
+done
+[ -n "$PY" ] || { echo "Hermes 파이썬을 찾지 못함 ($HB)" >&2; exit 1; }
 HOOK_CMD="$HH/agent-hooks/fold-notify.sh" "$PY" - <<'__PY__'
 import os
 from hermes_cli.config import load_config, save_config

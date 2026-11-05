@@ -93,26 +93,15 @@ if [ -f "$hb" ]; then age=$(( $(date +%s) - $(stat -c %Y "$hb") )); [ "$age" -lt
 PATH="/root/.hermes-bridge-client:$PATH" phone notify "Hermes" "$msg" "http://127.0.0.1:__PORT__" >/dev/null 2>&1 || true
 __HOOK__
 chmod 700 "$HH/agent-hooks/fold-notify.sh"
-# Hermes 를 불러올 수 있는 파이썬 찾기 (hermes 명령은 셸 래퍼일 수 있음)
-HB="$(readlink -f "$(command -v hermes)")"; PY=""
-for c in "$(dirname "$HB")/python" $(grep -aoE '/[^ "'"'"']*/bin/python[0-9.]*' "$HB" 2>/dev/null | head -3) \
-         "$HH/hermes-agent/venv/bin/python" "$HH/hermes-agent/.venv/bin/python" \
-         "${PREFIX:-/nonexistent}/lib/hermes-agent/venv/bin/python" "${PREFIX:-/nonexistent}/lib/hermes-agent/.venv/bin/python"; do
-  [ -x "$c" ] && "$c" -c 'import hermes_cli.config, agent.shell_hooks' 2>/dev/null && { PY="$c"; break; }
-done
-[ -n "$PY" ] || { echo "Hermes 파이썬을 찾지 못함 ($HB)" >&2; exit 1; }
-HOOK_CMD="$HH/agent-hooks/fold-notify.sh" "$PY" - <<'__PY__'
-import os
-from hermes_cli.config import load_config, save_config
-from agent.shell_hooks import _record_approval
-cmd = os.environ["HOOK_CMD"]
-cfg = load_config(); hooks = cfg.get("hooks") or {}
-lst = [h for h in (hooks.get("on_session_end") or []) if h.get("command") != cmd] + [{"command": cmd, "timeout": 20}]
-hooks["on_session_end"] = lst; cfg["hooks"] = hooks
-save_config(cfg, merge_existing=True)
-_record_approval("on_session_end", cmd)   # 사용자가 직접 실행한 설정 = 이 훅 하나만 승인
-print("알림 훅 설정:", cmd)
-__PY__
+# 훅 등록(config) + 이 훅 하나만 승인(allowlist) — 파이썬 없이 hermes config / jq 로
+PATH="$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin:${PATH:-}"
+CMD="$HH/agent-hooks/fold-notify.sh"
+hermes config set hooks.on_session_end "[{\"command\": \"$CMD\", \"timeout\": 20}]" >/dev/null
+AL="$HH/shell-hooks-allowlist.json"; [ -s "$AL" ] || echo '{"approvals": []}' > "$AL"
+NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+jq --arg c "$CMD" --arg t "$NOW" '.approvals = ([(.approvals // [])[] | select(.command != $c)] + [{event: "on_session_end", command: $c, approved_at: $t, script_mtime_at_approval: $t}])' "$AL" > "$AL.tmp" && mv "$AL.tmp" "$AL"
+chmod 600 "$AL"
+hermes hooks list 2>/dev/null | grep -q 'fold-notify.sh' && echo "알림 훅 설정: $CMD" || { echo "알림 훅 등록 확인 실패" >&2; exit 1; }
 __NS__
 }
 

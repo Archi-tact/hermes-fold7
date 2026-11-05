@@ -136,13 +136,24 @@ audit "RUN" "$SUMMARY"
 adb_ready() {
   command -v adb >/dev/null || die "android-tools 미설치 (pkg install android-tools)"
   if ! adb devices 2>/dev/null | awk 'NR>1 && $2=="device"{f=1} END{exit !f}'; then
-    local ep
-    ep="$(adb mdns services 2>/dev/null | awk '/_adb-tls-connect/{print $NF; exit}')"
-    # mDNS로 못 찾으면 고정 엔드포인트 파일 사용 (테스트 서버/redroid 등)
-    [ -z "$ep" ] && [ -f "$BRIDGE_HOME/adb-endpoint" ] && ep="$(head -1 "$BRIDGE_HOME/adb-endpoint")"
-    [[ -n "$ep" && "$ep" =~ ^[A-Za-z0-9.:-]+$ ]] && adb connect "$ep" >/dev/null 2>&1
-    adb devices 2>/dev/null | awk 'NR>1 && $2=="device"{f=1} END{exit !f}' \
-      || die "ADB 미연결: 설정>개발자 옵션>무선 디버깅 ON 후 scripts/40-adb-pair.sh 실행"
+    # 무선 디버깅 포트는 켤 때마다 바뀜 → ① 시스템 속성에서 지금 포트 ② mDNS ③ 저장된 엔드포인트 순서로 시도
+    local port eps=() ep out=""
+    port="$(getprop service.adb.tls.port 2>/dev/null | tr -dc '0-9')"
+    [ -n "$port" ] && [ "$port" != 0 ] && eps+=("127.0.0.1:$port")
+    ep="$(adb mdns services 2>/dev/null | awk '/_adb-tls-connect/{print $NF; exit}')"; [ -n "$ep" ] && eps+=("$ep")
+    [ -f "$BRIDGE_HOME/adb-endpoint" ] && eps+=("$(head -1 "$BRIDGE_HOME/adb-endpoint")")
+    for ep in "${eps[@]}"; do
+      [[ "$ep" =~ ^[A-Za-z0-9.:-]+$ ]] || continue
+      out="$(adb connect "$ep" 2>&1)"
+      adb devices 2>/dev/null | awk 'NR>1 && $2=="device"{f=1} END{exit !f}' && break
+    done
+    if ! adb devices 2>/dev/null | awk 'NR>1 && $2=="device"{f=1} END{exit !f}'; then
+      if [ -z "$port" ] || [ "$port" = 0 ]; then
+        die "ADB 미연결: 무선 디버깅이 꺼져 있어요 → 설정 > 개발자 옵션 > 무선 디버깅 켜기 (와이파이 필요)"
+      else
+        die "ADB 미연결: 무선 디버깅은 켜져 있지만 이 폰과 페어링이 안 됐어요 → Termux 에서 bash ~/hermes-fold7/scripts/40-adb-pair.sh (한 번만) [${out:0:80}]"
+      fi
+    fi
   fi
   # 같은 폰이 mDNS 이름과 IP:포트로 두 번 잡히면 "more than one device" → 첫 기기로 고정
   ANDROID_SERIAL="$(adb devices 2>/dev/null | awk 'NR>1 && $2=="device"{print $1; exit}')"

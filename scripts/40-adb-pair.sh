@@ -12,9 +12,15 @@ read -r -p "페어링 포트 (예: 37123): " PAIR_PORT
 read -r -p "페어링 코드 6자리: " PAIR_CODE
 adb pair "127.0.0.1:$PAIR_PORT" "$PAIR_CODE"
 
-echo "무선 디버깅 화면의 'IP 주소 및 포트'의 포트 번호(페어링 포트와 다름)"
-read -r -p "연결 포트: " CONN_PORT
+CONN_PORT="$(getprop service.adb.tls.port 2>/dev/null | tr -dc '0-9')"
+if [ -z "$CONN_PORT" ] || [ "$CONN_PORT" = 0 ]; then
+  echo "무선 디버깅 화면의 'IP 주소 및 포트'의 포트 번호(페어링 포트와 다름)"
+  read -r -p "연결 포트: " CONN_PORT
+else
+  echo "연결 포트 자동 확인: $CONN_PORT"
+fi
 adb connect "127.0.0.1:$CONN_PORT"
+mkdir -p "$HOME/.hermes-bridge"; echo "127.0.0.1:$CONN_PORT" > "$HOME/.hermes-bridge/adb-endpoint"
 adb devices -l
 
 cat <<'EOF'

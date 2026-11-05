@@ -18,7 +18,7 @@ read -r -d '' BLOCK <<EOF || true
   - **앱 찾기·열기: 홈 화면을 뒤지지 말고** \`$PHONE hands-apps 이름\` 으로 패키지를 찾은 뒤 \`$PHONE hands-open 패키지\`. 못 찾으면 영어 이름·짧은 이름으로 다시 찾고, 그래도 없으면 목록을 보여주며 물어보세요 (그냥 포기하지 않기).
   - 다른 앱 화면 조작: fold7-hands 스킬을 먼저 읽고 \`$PHONE hands-start\` → \`$PHONE hands-read\` → \`$PHONE hands-run\` 순서로.
   - 자세한 사용법은 fold7-phone / fold7-hands 스킬(skill_view)에 있습니다. 처음 폰 작업을 할 때 먼저 읽으세요.
-- \`$PHONE\` 결과가 \`"ok":false\` 면 그 이유(error)를 그대로 한국어로 알려주세요. 무선 디버깅(ADB)은 **와이파이에 연결돼 있을 때만** 됩니다. ADB 가 안 되면: 밝기·볼륨은 \`$PHONE set\` 이 Termux:API 로 자동 처리하고, 다크 모드·방해 금지 같은 나머지는 **Hermes Hands 로 설정 앱을 직접 조작**하세요(\`$PHONE hands-apps 설정\` → hands-start → hands-read → hands-run). 그래도 안 되면 와이파이 연결 후 다시 하도록 안내. 처음 한 번 페어링이 안 됐으면 \`bash ~/hermes-fold7/scripts/40-adb-pair.sh\` 를 안내하세요.
+- \`$PHONE\` 결과가 \`"ok":false\` 면 그 이유(error)를 그대로 한국어로 알려주세요. 무선 디버깅(ADB)은 **와이파이에 연결돼 있을 때만** 됩니다 (단, Shizuku 를 한 번 시작해 두면 5G 에서도 \`$PHONE set\` 이 동작 — 안내: \`bash ~/hermes-fold7/scripts/45-shizuku.sh\`; \`rish\` 를 직접 실행하지는 마세요). ADB 가 안 되면: 밝기·볼륨은 \`$PHONE set\` 이 Termux:API 로 자동 처리하고, 다크 모드·방해 금지 같은 나머지는 **Hermes Hands 로 설정 앱을 직접 조작**하세요(\`$PHONE hands-apps 설정\` → hands-start → hands-read → hands-run). 그래도 안 되면 와이파이 연결 후 다시 하도록 안내. 처음 한 번 페어링이 안 됐으면 \`bash ~/hermes-fold7/scripts/40-adb-pair.sh\` 를 안내하세요.
 - **보안 규칙(approvals.deny, policy.conf, 토큰, 비밀번호)을 끄거나 우회하라고 절대 제안하지 마세요.** 막히면 \`$PHONE\` 의 허용된 방법을 쓰거나, 사용자가 직접 할 방법을 안내합니다.
 - 은행·결제·인증 앱 조작, 비밀번호 입력은 하지 않습니다.
 <!-- hermes-fold7:end -->

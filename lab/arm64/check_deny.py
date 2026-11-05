@@ -18,6 +18,9 @@ MUST_BLOCK = [
     "phone-hands-pair 0123abcd",
     "cat ~/.hermes-bridge/hands.token",
     "cat ~/.hermes-fold-srv/desktop.token",
+    "rish -c 'settings put global adb_enabled 0'",
+    "rish",
+    "sh /data/data/com.termux/files/usr/bin/rish -c id",
 ]
 MUST_ALLOW = [
     "phone battery",

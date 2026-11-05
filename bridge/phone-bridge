@@ -133,7 +133,13 @@ SUMMARY="$ACTION"; for a in "${ARGS[@]}"; do SUMMARY+=" «${a//$'\n'/⏎}»"; do
 audit "RUN" "$SUMMARY"
 
 # ---------- ADB 헬퍼 (무선 디버깅으로 자기 자신에 연결) ----------
+SHELL_MODE=adb
+rish_ok() {   # Shizuku(rish): 와이파이 한 번 시작 후엔 5G 에서도 셸 권한 사용 (네트워크 포트 없음)
+  command -v rish >/dev/null 2>&1 || return 1
+  [ "$(timeout 8 rish -c 'id -u' 2>/dev/null | tr -dc '0-9')" = 2000 ]
+}
 adb_ready() {
+  if rish_ok; then SHELL_MODE=rish; return 0; fi
   command -v adb >/dev/null || die "android-tools 미설치 (pkg install android-tools)"
   if ! adb devices 2>/dev/null | awk 'NR>1 && $2=="device"{f=1} END{exit !f}'; then
     # 무선 디버깅 포트는 켤 때마다 바뀜 → ① 시스템 속성에서 지금 포트 ② mDNS ③ 저장된 엔드포인트 순서로 시도
@@ -149,7 +155,7 @@ adb_ready() {
     done
     if ! adb devices 2>/dev/null | awk 'NR>1 && $2=="device"{f=1} END{exit !f}'; then
       if [ -z "$port" ] || [ "$port" = 0 ]; then
-        die "ADB 미연결: 무선 디버깅이 꺼져 있어요 → 설정 > 개발자 옵션 > 무선 디버깅 켜기 (와이파이 필요)"
+        die "ADB 미연결: 무선 디버깅이 꺼져 있어요 (와이파이 필요) → 와이파이에서 무선 디버깅 켜기, 또는 Shizuku 를 한 번 시작해 두면 5G 에서도 됩니다 (bash ~/hermes-fold7/scripts/45-shizuku.sh)"
       else
         die "ADB 미연결: 무선 디버깅은 켜져 있지만 이 폰과 페어링이 안 됐어요 → Termux 에서 bash ~/hermes-fold7/scripts/40-adb-pair.sh (한 번만) [${out:0:80}]"
       fi
@@ -159,8 +165,10 @@ adb_ready() {
   ANDROID_SERIAL="$(adb devices 2>/dev/null | awk 'NR>1 && $2=="device"{print $1; exit}')"
   export ANDROID_SERIAL
 }
-adb_done() { [ "$ADB_KILL_AFTER" = 1 ] && adb kill-server >/dev/null 2>&1; true; }
-A() { adb shell -- "$@"; }   # 인자 배열 그대로 전달 (adb가 원격에서 공백 결합하므로 값 검증 필수)
+adb_done() { [ "$SHELL_MODE" = adb ] && [ "$ADB_KILL_AFTER" = 1 ] && adb kill-server >/dev/null 2>&1; true; }
+# 셸 권한 명령: Shizuku(rish) 가 있으면 그쪽, 없으면 adb. (값은 호출 전에 검증됨, %q 로 한 번 더 인용)
+A() { if [ "$SHELL_MODE" = rish ]; then rish -c "$(printf '%q ' "$@")"; else adb shell -- "$@"; fi; }
+AX() { if [ "$SHELL_MODE" = rish ]; then rish -c "$(printf '%q ' "$@")"; else adb exec-out "$@"; fi; }   # 바이너리 출력
 safe_word() { [[ "$1" =~ ^[A-Za-z0-9._:/-]+$ ]] || die "unsafe value: $1"; }
 
 # ---------- 설정 직접 변경 ----------
@@ -250,11 +258,11 @@ case "$ACTION" in
   sms-send)      need 2 "NUMBER TEXT"; [[ "$(arg 0)" =~ ^\+?[0-9-]{3,20}$ ]] || die "bad number"; termux-sms-send -n "$(arg 0)" "$(arg 1)" && echo '{"ok":true}' ;;
   call)          need 1 "NUMBER"; [[ "$(arg 0)" =~ ^\+?[0-9-]{3,20}$ ]] || die "bad number"; termux-telephony-call "$(arg 0)" && echo '{"ok":true}' ;;
 
-  adb-status)    adb_ready; adb devices -l; adb_done ;;
+  adb-status)    adb_ready; if [ "$SHELL_MODE" = rish ]; then jq -cn '{ok:true, via:"shizuku", note:"5G 에서도 동작 (재부팅 전까지)"}'; else adb devices -l; fi; adb_done ;;
   adb-packages)  adb_ready; A pm list packages -3; adb_done ;;
   adb-launch)    need 1 "PACKAGE"; safe_word "$(arg 0)"; adb_ready; A monkey -p "$(arg 0)" -c android.intent.category.LAUNCHER 1 >/dev/null && echo '{"ok":true}'; adb_done ;;
-  adb-screenshot) adb_ready; f="$OUT_DIR/screen-$ts.png"; adb exec-out screencap -p > "$f" && jq -n --arg p "${f#"$WORKSPACE"/}" '{ok:true,path:$p}'; adb_done ;;
-  adb-ui-dump)   adb_ready; f="$OUT_DIR/ui-$ts.xml"; A uiautomator dump /sdcard/.hermes-ui.xml >/dev/null && adb exec-out cat /sdcard/.hermes-ui.xml > "$f" && A rm -f /sdcard/.hermes-ui.xml && jq -n --arg p "${f#"$WORKSPACE"/}" '{ok:true,path:$p}'; adb_done ;;
+  adb-screenshot) adb_ready; f="$OUT_DIR/screen-$ts.png"; AX screencap -p > "$f" && jq -n --arg p "${f#"$WORKSPACE"/}" '{ok:true,path:$p}'; adb_done ;;
+  adb-ui-dump)   adb_ready; f="$OUT_DIR/ui-$ts.xml"; A uiautomator dump /sdcard/.hermes-ui.xml >/dev/null && AX cat /sdcard/.hermes-ui.xml > "$f" && A rm -f /sdcard/.hermes-ui.xml && jq -n --arg p "${f#"$WORKSPACE"/}" '{ok:true,path:$p}'; adb_done ;;
   adb-tap)       need 2 "X Y"; int "$(arg 0)"; int "$(arg 1)"; adb_ready; A input tap "$(arg 0)" "$(arg 1)" && echo '{"ok":true}'; adb_done ;;
   adb-swipe)     need 4 "X1 Y1 X2 Y2 [MS]"; for i in 0 1 2 3; do int "$(arg $i)"; done; ms="${ARGS[4]:-300}"; int "$ms"; adb_ready; A input swipe "$(arg 0)" "$(arg 1)" "$(arg 2)" "$(arg 3)" "$ms" && echo '{"ok":true}'; adb_done ;;
   adb-text)      need 1 "TEXT(영문/숫자/기본기호)"; [[ "$(arg 0)" =~ ^[A-Za-z0-9\ ._@:/-]+$ ]] || die "adb-text: 한글/특수문자는 clipboard-set 후 붙여넣기 사용"; adb_ready; t="$(arg 0)"; A input text "${t// /%s}" && echo '{"ok":true}'; adb_done ;;

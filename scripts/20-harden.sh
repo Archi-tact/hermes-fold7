@@ -29,7 +29,7 @@ echo "==> 2. 절대 금지 명령 (YOLO 모드에서도 차단)"
 DENY_JSON="$(jq -cn '[
   "termux-*", "adb", "adb *", "*phone-bridge*", "*.hermes-bridge*",
   "*authorized_keys*", "*sshd_config*", "*.hermes/config.yaml*", "*.hermes/.env*",
-  "su", "su *", "pm uninstall*", "pm clear*", "phone-hands-pair*", "*hands.token*", "*desktop.token*", "*80-hermes-fold.sh password*",
+  "su", "su *", "pm uninstall*", "pm clear*", "phone-hands-pair*", "*hands.token*", "*desktop.token*", "*80-hermes-fold.sh password*", "rish", "rish *", "*rish_shizuku*", "*/rish *",
   "rm -rf ~*", "rm -rf /sdcard*", "rm -rf /storage*", "rm -rf /data*",
   "git push --force*", "git push -f*",
   "*curl*|*sh*", "*wget*|*sh*", "*curl*|*bash*", "*wget*|*bash*"

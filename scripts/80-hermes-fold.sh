@@ -8,6 +8,7 @@
 #   bash scripts/80-hermes-fold.sh remote-off
 #   bash scripts/80-hermes-fold.sh password    # 새 비밀번호 발급
 #   bash scripts/80-hermes-fold.sh update      # 화면 파일만 최신으로 (git pull 뒤)
+#   bash scripts/80-hermes-fold.sh notify-setup  # 화면을 닫았을 때 답변 완료 알림
 #
 # 구조 (서버 하나):
 #   hermes dashboard --host 127.0.0.1 --port 9130   ← Hermes 공식 서버. 화면만 Hermes Fold 로 교체(HERMES_WEB_DIST)
@@ -73,6 +74,42 @@ get_value() {
   else $HC config get "$1" 2>/dev/null; fi
 }
 
+notify_setup() {  # 답변 완료 알림 훅: Hermes 가 턴을 끝낼 때(on_session_end) — 화면이 닫혀 있을 때만 폰 알림
+  sed "s/__PORT__/$PORT/" <<'__NS__' | guest_sh
+HH="${HERMES_HOME:-$HOME/.hermes}"; mkdir -p "$HH/agent-hooks"
+cat > "$HH/agent-hooks/fold-notify.sh" <<'__HOOK__'
+#!/bin/sh
+# Hermes Fold: 답변이 끝났는데 화면(브라우저)이 닫혀 있으면 폰 알림. 화면을 보고 있으면 조용히.
+HH="${HERMES_HOME:-$HOME/.hermes}"
+payload="$(cat)"
+case "$payload" in
+  *'"interrupted": true'*) exit 0 ;;
+  *'"failed": true'*) msg="작업이 실패했어요 · 눌러서 확인" ;;
+  *'"completed": true'*) msg="답변이 도착했어요 · 눌러서 확인" ;;
+  *) exit 0 ;;
+esac
+hb="$HH/state/dashboard_clients.heartbeat"
+if [ -f "$hb" ]; then age=$(( $(date +%s) - $(stat -c %Y "$hb") )); [ "$age" -lt 25 ] && exit 0; fi
+PATH="/root/.hermes-bridge-client:$PATH" phone notify "Hermes" "$msg" "http://127.0.0.1:__PORT__" >/dev/null 2>&1 || true
+__HOOK__
+chmod 700 "$HH/agent-hooks/fold-notify.sh"
+HB="$(readlink -f "$(command -v hermes)")"; PY="$(dirname "$HB")/python"
+[ -x "$PY" ] || PY="$(head -1 "$HB" | sed 's/^#!//; s/ .*//')"
+HOOK_CMD="$HH/agent-hooks/fold-notify.sh" "$PY" - <<'__PY__'
+import os
+from hermes_cli.config import load_config, save_config
+from agent.shell_hooks import _record_approval
+cmd = os.environ["HOOK_CMD"]
+cfg = load_config(); hooks = cfg.get("hooks") or {}
+lst = [h for h in (hooks.get("on_session_end") or []) if h.get("command") != cmd] + [{"command": cmd, "timeout": 20}]
+hooks["on_session_end"] = lst; cfg["hooks"] = hooks
+save_config(cfg, merge_existing=True)
+_record_approval("on_session_end", cmd)   # 사용자가 직접 실행한 설정 = 이 훅 하나만 승인
+print("알림 훅 설정:", cmd)
+__PY__
+__NS__
+}
+
 new_password() {
   need openssl openssl-tool
   local pw h got; pw="$(openssl rand -base64 18 | tr -dc 'A-Za-z0-9' | head -c 4)-$(openssl rand -base64 18 | tr -dc 'A-Za-z0-9' | head -c 4)-$(openssl rand -base64 18 | tr -dc 'A-Za-z0-9' | head -c 4)"
@@ -101,6 +138,7 @@ setup() {
   $HC config set dashboard.basic_auth.session_ttl_seconds 2592000 >/dev/null   # 폰에서 30일 로그인 유지
   $HC config set HERMES_WEB_DIST "$WEB_GUEST" >/dev/null
   $HC config set HERMES_DASHBOARD_SESSION_TOKEN "file:$TOKEN_GUEST" >/dev/null
+  notify_setup || echo "⚠ 답변 알림 설정 실패 (나중에: bash scripts/80-hermes-fold.sh notify-setup)"
   local pw; pw="$(new_password)"
   printf '%s\n' "$pub" > "$STATE/public_url"
   cat <<EOF
@@ -120,6 +158,7 @@ start() {
   G test -f "$WEB_GUEST/index.html" || setup
   if running; then say "이미 실행 중 (pid $(cat "$STATE/server.pid"))"; return; fi
   say "Hermes 서버 시작 (127.0.0.1:$PORT)"
+  command -v termux-wake-lock >/dev/null && termux-wake-lock 2>/dev/null || true   # 화면을 꺼도/앱을 내려도 계속 동작
   nohup $HC dashboard --skip-build --no-open --host 127.0.0.1 --port "$PORT" > "$STATE/server.log" 2>&1 &
   echo $! > "$STATE/server.pid"
   for _ in $(seq 1 90); do
@@ -171,6 +210,7 @@ status() {
 case "${1:-}" in
   setup) setup ;;
   update) put_web; say "화면 파일 갱신 완료 → 브라우저 새로고침" ;;
+  notify-setup) notify_setup; say "답변 알림 설정 완료 — 서버 재시작 후 적용"; running && { stop; start; } ;;
   start) start ;;
   stop) stop ;;
   status) status ;;

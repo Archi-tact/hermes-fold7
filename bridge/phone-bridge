@@ -217,7 +217,10 @@ ts="$(date +%Y%m%d-%H%M%S)"
 case "$ACTION" in
   help)          printf '%s\n' "${!POLICY[@]}" | sort | while read -r k; do echo "$k=${POLICY[$k]}"; done ;;
   battery)       termux-battery-status ;;
-  notify)        need 2 "TITLE TEXT"; termux-notification --title "$(arg 0)" --content "$(arg 1)" && echo '{"ok":true}' ;;
+  notify)        need 2 "TITLE TEXT [http://127.0.0.1:포트 — 누르면 열기]"
+                 if [ -n "${ARGS[2]:-}" ]; then [[ "${ARGS[2]}" =~ ^http://127\.0\.0\.1:[0-9]{2,5}/?$ ]] || die "알림 링크는 http://127.0.0.1:포트 만"
+                   termux-notification --id hermes-reply --title "$(arg 0)" --content "$(arg 1)" --action "termux-open-url ${ARGS[2]}" && echo '{"ok":true}'
+                 else termux-notification --title "$(arg 0)" --content "$(arg 1)" && echo '{"ok":true}'; fi ;;
   toast)         need 1 "TEXT"; termux-toast "$(arg 0)" && echo '{"ok":true}' ;;
   vibrate)       termux-vibrate -d 400 && echo '{"ok":true}' ;;
   tts)           need 1 "TEXT"; termux-tts-speak "$(arg 0)" && echo '{"ok":true}' ;;

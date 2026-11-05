@@ -416,24 +416,37 @@ async function authParam() {
   return ["token", window.__HERMES_SESSION_TOKEN__ || ""];
 }
 
-let retry = 0;
+const store = {   // 앱을 닫았다 열어도 같은 대화로 (브라우저 저장소가 막혀도 동작은 함)
+  get(k) { try { return localStorage.getItem(k) || sessionStorage.getItem(k); } catch (_) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (_) {} try { sessionStorage.setItem(k, v); } catch (_) {} },
+};
+let retry = 0, connecting = false;
+function connectNow() {   // 화면으로 돌아왔을 때: 끊겨 있으면 기다리지 말고 바로 다시 연결
+  if (DEMO || connecting) return;
+  if (S.ws && (S.ws.readyState === 0 || S.ws.readyState === 1)) return;
+  retry = 0; connect();
+}
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") connectNow(); });
+addEventListener("pageshow", connectNow); addEventListener("online", connectNow); addEventListener("focus", connectNow);
 async function connect() {
   if (DEMO) { $("conn").className = "dot on"; $("model").textContent = "nemotron-3-ultra (demo)"; return Demo.boot(); }
-  $("conn").className = "dot wait";
+  $("conn").className = "dot wait"; connecting = true;
   try {
     const [k, v] = await authParam();
     const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/ws?${k}=${encodeURIComponent(v)}`);
     S.ws = ws;
     ws.onmessage = (m) => String(m.data).split("\n").filter(Boolean).forEach((l) => { try { onFrame(JSON.parse(l)); } catch (_) {} });
-    ws.onclose = () => { $("conn").className = "dot"; setBusy(false); setTimeout(connect, Math.min(15000, 1000 * 2 ** retry++)); };
+    // 끊겨도 Hermes 서버는 하던 일을 계속함 → 다시 연결되면 resume 으로 진행 중인 답변까지 이어서 보여줌
+    ws.onclose = () => { connecting = false; $("conn").className = "dot"; hideThink();
+      if (document.visibilityState === "visible") setTimeout(connect, Math.min(15000, 1000 * 2 ** retry++)); };
     ws.onopen = async () => {
-      retry = 0; $("conn").className = "dot on";
+      connecting = false; retry = 0; $("conn").className = "dot on";
       try { await call("client.capabilities", { server_requests: true }); } catch (_) {}
       await loadSessions();
       if (!S.sid) await newSession(); else await resume(S.sid).catch(() => newSession());
       checkSetup();
     };
-  } catch (e) { if (String(e.message) !== "login") setTimeout(connect, 3000); }
+  } catch (e) { connecting = false; if (String(e.message) !== "login") setTimeout(connect, 3000); }
 }
 
 async function newSession() {
@@ -441,7 +454,7 @@ async function newSession() {
   S.sid = r.session_id; S.tools.clear();
   msgs.innerHTML = ""; msgs.append(emptyNode()); $("title").textContent = "새 대화";
   if (r.info && (r.info.model || r.info.model_name)) $("model").textContent = r.info.model || r.info.model_name;
-  sessionStorage.setItem("fold.sid", S.sid);
+  store.set("fold.sid", S.sid);
 }
 async function resume(id) {
   const r = await call("session.resume", { session_id: id });
@@ -456,9 +469,19 @@ async function resume(id) {
       msgs.append(el);
     }
   }
+  // 화면을 닫아둔 사이에도 진행 중이던 답변(inflight) → 이어서 표시하고, 남은 승인 요청도 다시 띄움
+  const inf = r.inflight;
+  if (inf && (inf.streaming || inf.user || inf.assistant)) {
+    const users = [...msgs.querySelectorAll(".msg.user")];
+    if (inf.user && (!users.length || users[users.length - 1].textContent !== inf.user)) addUser(inf.user);
+    if (inf.assistant) aiDelta(inf.assistant);
+    if (inf.streaming) setBusy(true); else { aiSeal(); setBusy(false); }
+    if (inf.error) { aiDelta("\n\n⚠️ " + inf.error); aiSeal(); }
+  } else setBusy(false);
+  for (const q of r.open_requests || []) if (q.method === "approval") askApproval(q.id, q.params || {});
   if (!msgs.children.length) msgs.append(emptyNode());
   if (r.info && r.info.model) $("model").textContent = r.info.model;
-  sessionStorage.setItem("fold.sid", S.sid); scrollDown();
+  store.set("fold.sid", S.sid); scrollDown();
 }
 function emptyNode() { const d = document.createElement("div"); d.className = "empty"; d.id = "empty"; d.innerHTML = `<div class="big">무엇을 도와드릴까요?</div><div>폰 앱 조작, 설정 변경, 검색, 예약 작업까지 — 말로 시키면 됩니다.</div>`; return d; }
 
@@ -498,7 +521,7 @@ function closeDrawers() { $("side").classList.remove("open"); $("phone").classLi
 $("openSide").onclick = () => { $("side").classList.add("open"); $("scrim").classList.add("on"); };
 $("openPhone").onclick = () => { $("phone").classList.add("open"); $("scrim").classList.add("on"); };
 $("closePhone").onclick = closeDrawers; $("scrim").onclick = closeDrawers;
-S.sid = sessionStorage.getItem("fold.sid");
+S.sid = store.get("fold.sid");
 autosize(); renderHands();
 
 

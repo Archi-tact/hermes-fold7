@@ -48,6 +48,10 @@ jobs:
           bash scripts/80-hermes-fold.sh remote-on | sed 's/Session token : .*/Session token : ***/'
           bash scripts/80-hermes-fold.sh status
           echo "--- 열려 있는 포트 9130 ---"; ss -ltn | grep 9130 | tee "$RUNNER_TEMP/ports.txt"
+      - name: 답변 완료 알림 훅 등록 확인
+        run: |
+          hermes hooks list | tee "$RUNNER_TEMP/hooks.txt"
+          grep -q 'fold-notify.sh.*allowed' "$RUNNER_TEMP/hooks.txt" && echo "OK   on_session_end 알림 훅 등록·승인됨" || { echo "FAIL 알림 훅"; exit 1; }
       - name: 보안 — 와이파이/전체 인터페이스에 안 열림
         shell: bash
         run: |

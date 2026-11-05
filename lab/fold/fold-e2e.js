@@ -101,6 +101,19 @@ async function waitTurn(page, ms = 240000) {   // 답변이 끝날 때까지 (�
       await waitTurn(page).catch(() => {});
     }
 
+    console.log("== 5b. 답변 도중 화면을 닫았다가 다시 열기 → 답변이 이어서 보임");
+    await page.fill("#input", "1부터 5까지 한 줄에 하나씩 숫자만 써줘.");
+    await page.click("#send");
+    await page.waitForTimeout(1500);
+    await page.close();                                   // 앱을 내리거나 닫은 상황
+    await new Promise((r) => setTimeout(r, 30000));       // 그 사이 서버는 계속 일함
+    const back = await ctx.newPage();
+    await back.goto(URL0 + "/");
+    await back.waitForSelector("#conn.on", { timeout: 60000 }).catch(() => {});
+    await back.waitForFunction(() => /[1-5][\s\S]*5/.test([...document.querySelectorAll(".msg.ai")].map((e) => e.textContent).join(" ")), null, { timeout: 120000 })
+      .then(() => ok("다시 열면 닫혀 있던 동안의 답변이 이어서 보임")).catch(async () => { bad("닫았다 연 뒤 답변 안 보임"); });
+    await back.waitForTimeout(500); await shot(back, "cover-reopened");
+
     console.log("== 6. 펼친 화면(3단) + 대화 이어보기");
     const wide = await browser.newContext({ viewport: { width: 884, height: 940 }, deviceScaleFactor: 2.2, colorScheme: "dark", locale: "ko-KR", storageState: await ctx.storageState() });
     const p2 = await wide.newPage();

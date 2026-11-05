@@ -9,11 +9,11 @@
 #   3) Shizuku 앱 → '터미널 앱에서 Shizuku 사용' → '파일 내보내기' → '다운로드(Download)' 폴더 선택
 #   4) Termux 에서: bash ~/hermes-fold7/scripts/45-shizuku.sh
 set -euo pipefail
-SRC=""
-for d in "$HOME/storage/downloads" "$HOME/storage/shared/Download" /sdcard/Download; do
-  [ -f "$d/rish" ] && [ -f "$d/rish_shizuku.dex" ] && { SRC="$d"; break; }
-done
-[ -n "$SRC" ] || { echo "❌ rish 파일을 못 찾음 → Shizuku 앱 → '터미널 앱에서 Shizuku 사용' → 내보내기 → Download 폴더"; exit 1; }
+# 안드로이드는 Download 폴더 '자체'를 고를 수 없어서 하위 폴더에 내보내는 경우가 많음 → 하위 폴더까지 찾기
+SRC="$(find "$HOME/storage/shared" /sdcard -maxdepth 4 -name rish_shizuku.dex -newermt '-30 days' 2>/dev/null | head -1 | xargs -r dirname)"
+[ -n "$SRC" ] && [ -f "$SRC/rish" ] || SRC=""
+[ -n "$SRC" ] || { echo "❌ rish 파일을 못 찾음 → Shizuku 앱 → '터미널 앱에서 Shizuku 사용' → 내보내기 → Download 안에 폴더 하나 만들어 선택"; exit 1; }
+echo "찾음: $SRC" 
 install -m 700 "$SRC/rish" "$PREFIX/bin/rish"
 install -m 400 "$SRC/rish_shizuku.dex" "$PREFIX/bin/rish_shizuku.dex"
 # rish 는 어떤 앱에서 쓰는지 알아야 함 → Termux

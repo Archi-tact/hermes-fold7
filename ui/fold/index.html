@@ -529,6 +529,8 @@ autosize(); renderHands();
 const PROVIDERS = [
   { id: "nvidia", name: "NVIDIA", tag: "무료 · 추천", env: "NVIDIA_API_KEY", ph: "nvapi-…", url: "https://build.nvidia.com",
     help: "build.nvidia.com 로그인 → 아무 모델 → 'Get API Key' 에서 무료 키 발급", models: ["nvidia/nemotron-3-ultra-550b-a55b", "nvidia/nemotron-3-super-120b-a12b", "nvidia/nemotron-3.5-super-vl-120b-a12b", "moonshotai/kimi-k2.6", "z-ai/glm-5.3"] },
+  { id: "deepseek", name: "DeepSeek", tag: "저렴 · 빠름", env: "DEEPSEEK_API_KEY", ph: "sk-…", url: "https://platform.deepseek.com/api_keys",
+    help: "platform.deepseek.com → API keys → Create new API key (키는 만들 때 한 번만 보여요 — 바로 여기에 붙여넣기)", models: ["deepseek-flash", "deepseek-v4-pro"] },
   { id: "openai-api", name: "OpenAI", tag: "유료", env: "OPENAI_API_KEY", ph: "sk-…", url: "https://platform.openai.com/api-keys",
     help: "platform.openai.com → API keys → Create new secret key", models: ["gpt-5.5", "gpt-5.4-mini", "gpt-6-luna"] },
   { id: "anthropic", name: "Claude", tag: "유료", env: "ANTHROPIC_API_KEY", ph: "sk-ant-…", url: "https://console.anthropic.com",

@@ -213,6 +213,7 @@ if launch org.fossify.math; then
   echo "     좌표 탭(9 버튼) 응답 $(grep '^{' <<<"$r" | tail -1) → 결과 칸 '$RES9'"
   [[ "$RES9" == *9* ]] && ok "⑤ 좌표 탭이 앱에 전달됨 (계산기 9)" || bad "⑤ 좌표 탭 전달 안 됨 (결과 '$RES9')"
 fi
+AS am force-stop com.android.settings 2>/dev/null   # 지난 하위 화면(짧은 페이지) 말고 설정 첫 목록부터
 if launch com.android.settings; then   # 같은 스와이프로 설정 목록이 스크롤되는지
   dump; F0="$(jq -r '[.nodes[] | select(.id // "" | test("title$"))][0].text // empty' <<<"$D")"
   ph gs1 hands-swipe $((SW/2)) $((SH*75/100)) $((SW/2)) $((SH*30/100)) 300 >/dev/null; sleep 1.5; dump
@@ -314,14 +315,14 @@ cat > "$WORK/calc-mul.json" <<'J'
   {"do":"assert","match":"^56$"} ]
 J
 push_termux "$WORK/calc-mul.json" "work/recipes/calc-mul.json" 600
-T0=$(date +%s); R="$(ph run1 hands-run @calc-mul)"; T1=$(date +%s)
-echo "     $(grep '^{' <<<"$R" | tail -1 | jq -c '{ok,done,error}' 2>/dev/null)  (${T1}-${T0}=$((T1-T0))초)"
-[ "$(jqv .ok "$R")" = true ] && [ "$(jqv .done "$R")" = 10 ] && ok "⑧ 레시피 한 번 호출로 10단계 실행 → 7×8=56 확인 ($((T1-T0))초)" || { bad "⑧ hands-run 레시피"; echo "$R" | tail -3; }
+T0=$(date +%s); RES="$(ph run1 hands-run @calc-mul)"; T1=$(date +%s)
+echo "     $(grep '^{' <<<"$RES" | tail -1 | jq -c '{ok,done,error}' 2>/dev/null)  (${T1}-${T0}=$((T1-T0))초)"
+[ "$(jqv .ok "$RES")" = true ] && [ "$(jqv .done "$RES")" = 10 ] && ok "⑧ 레시피 한 번 호출로 10단계 실행 → 7×8=56 확인 ($((T1-T0))초)" || { bad "⑧ hands-run 레시피"; echo "$RES" | tail -3; }
 snap "recipe-56"
-R="$(ph run2 hands-run '[{"do":"launch","package":"org.fossify.math"},{"do":"click","match":"btn_clear$"},{"do":"assert","match":"^999$"}]')"
-[ "$(jqv .ok "$R")" = false ] && [[ "$R" == *"step 2"* ]] && ok "⑧ 확인(assert) 실패 시 그 단계에서 멈추고 보고" || { bad "⑧ assert 실패 보고"; echo "$R" | tail -2; }
-R="$(ph run3 hands-run '[{"do":"launch","package":"com.android.calculator2"}]')"
-[[ "$R" == *"not in session"* ]] && ok "⑧ 스크립트도 허용 안 된 앱은 실행 못 함" || { bad "⑧ 스크립트 범위 검사"; echo "$R" | tail -2; }
+RES="$(ph run2 hands-run '[{"do":"launch","package":"org.fossify.math"},{"do":"click","match":"btn_clear$"},{"do":"assert","match":"^999$"}]')"
+[ "$(jqv .ok "$RES")" = false ] && [[ "$RES" == *"step 2"* ]] && ok "⑧ 확인(assert) 실패 시 그 단계에서 멈추고 보고" || { bad "⑧ assert 실패 보고"; echo "$RES" | tail -2; }
+RES="$(ph run3 hands-run '[{"do":"launch","package":"com.android.calculator2"}]')"
+[[ "$RES" == *"not in session"* ]] && ok "⑧ 스크립트도 허용 안 된 앱은 실행 못 함" || { bad "⑧ 스크립트 범위 검사"; echo "$RES" | tail -2; }
 
 # ---------- ⑦ 설정 직접 변경: 화면 터치 없이 값만 바꾸기 (phone set) ----------
 echo "== ⑦ 설정 직접 변경 (터치 없이)"
@@ -343,8 +344,8 @@ setchk "애니메이션 0.5배"    "settings get global animator_duration_scale"
 setchk "충전 중 화면 켜둠"   "settings get global stay_on_while_plugged_in" "^7$" -- stay-awake on
 setchk "방해 금지 켜기"      "settings get global zen_mode"            "^[1-3]$" -- dnd on
 setchk "방해 금지 끄기"      "settings get global zen_mode"            "^0$" -- dnd off
-R="$(ph setx set brightness 999)"; [[ "$R" == *"범위"* ]] && ok "⑦ 범위 밖 값 거부 (밝기 999)" || bad "⑦ 범위 검사: $R"
-R="$(ph sety set 'dark;reboot' on)"; [[ "$R" == *"모르는 설정"* ]] && ok "⑦ 이상한 이름 거부 (명령 끼워넣기 차단)" || bad "⑦ 이름 검사: $R"
+RES="$(ph setx set brightness 999)"; [[ "$RES" == *"범위"* ]] && ok "⑦ 범위 밖 값 거부 (밝기 999)" || bad "⑦ 범위 검사: $RES"
+RES="$(ph sety set 'dark;reboot' on)"; [[ "$RES" == *"모르는 설정"* ]] && ok "⑦ 이상한 이름 거부 (명령 끼워넣기 차단)" || bad "⑦ 이름 검사: $RES"
 AS settings put system font_scale 1.0; AS settings put global animator_duration_scale 1; AS settings put global window_animation_scale 1; AS settings put global transition_animation_scale 1
 snap "settings-direct"
 
@@ -358,6 +359,10 @@ if [ -n "$GAME" ]; then
   h0="$(board_sig)"; for d in "$GX $((GY+R)) $GX $((GY-R))" "$((GX-R)) $GY $((GX+R)) $GY" "$GX $((GY-R)) $GX $((GY+R))" "$((GX+R)) $GY $((GX-R)) $GY"; do AS input swipe $d 180; sleep 0.8; done
   h1="$(board_sig)"; echo "     (참고) adb 기본 입력 스와이프 4회 → 판 $( [ "$h0" != "$h1" ] && echo 움직임 || echo '변화 없음 — 이 가상 기기에서 게임이 스와이프를 못 받음')"
 fi
+# 참고 진단: 설정 첫 목록을 adb 기본 입력으로 스와이프 → 가상 기기 자체가 스와이프 스크롤을 받는지
+AS am force-stop com.android.settings; AS am start -a android.settings.SETTINGS >/dev/null 2>&1; sleep 3
+s0="$(board_sig)"; AS input swipe $((SW/2)) $((SH*75/100)) $((SW/2)) $((SH*30/100)) 300; sleep 1.5; s1="$(board_sig)"
+echo "     (참고) adb 기본 입력으로 설정 목록 스와이프 → $( [ "$s0" != "$s1" ] && echo '스크롤됨' || echo '변화 없음 — 이 가상 기기는 스와이프 스크롤을 못 받음')"
 rec_stop "$ART/frames"
 AS logcat -d -s HermesHands > "$ART/hands-logcat.txt" 2>/dev/null
 echo; echo "RESULT: PASS=$PASS FAIL=$FAIL  (실제 앱 조작)"

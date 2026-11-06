@@ -61,6 +61,34 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 .msg.ai pre{background:var(--sunk);border:1px solid var(--line);padding:10px 12px;border-radius:10px;overflow:auto;font:12.5px/1.5 var(--mono)}
 .msg.ai pre code{background:none;padding:0}
 .msg.ai a{color:var(--accent)}
+/* 옵시디언 느낌 서식 */
+.msg.ai .mh{margin:.95em 0 .35em;line-height:1.3;font-weight:700;letter-spacing:-.01em}
+.msg.ai h2.mh{font-size:1.32em;border-bottom:1px solid var(--line);padding-bottom:.25em}
+.msg.ai h3.mh{font-size:1.16em} .msg.ai h4.mh{font-size:1.05em;color:var(--accent)} .msg.ai h5.mh{font-size:1em;color:var(--muted)}
+.msg.ai>:first-child{margin-top:0}
+.msg.ai strong{font-weight:700} .msg.ai em{font-style:italic} .msg.ai del{opacity:.6}
+.msg.ai mark{background:rgba(255,200,0,.3);color:inherit;padding:0 3px;border-radius:4px}
+.msg.ai hr{border:0;border-top:1px solid var(--line);margin:1.1em 0}
+.msg.ai blockquote{margin:.6em 0;padding:.15em .9em;border-left:3px solid var(--line);color:var(--muted)}
+.msg.ai li{margin:.18em 0} .msg.ai li>ul,.msg.ai li>ol{margin:.15em 0}
+.msg.ai li.task{list-style:none;margin-left:-1.15em} .msg.ai li.task input{margin:0 7px 0 0;vertical-align:-2px;accent-color:var(--accent)}
+.callout{margin:.65em 0;border-radius:10px;background:color-mix(in srgb,var(--c) 13%,transparent);border-left:3px solid var(--c);padding:.55em .85em}
+.callout .ctitle,.callout summary{font-weight:650;color:var(--c)} .callout summary{cursor:pointer}
+.callout .cbody{margin-top:.3em} .callout .cbody>:first-child{margin-top:0} .callout .cbody>:last-child{margin-bottom:0}
+.tbl{overflow-x:auto;margin:.65em 0;border:1px solid var(--line);border-radius:10px}
+.tbl table{border-collapse:collapse;width:100%;font-size:.93em}
+.tbl th,.tbl td{padding:7px 11px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+.tbl th{background:var(--sunk);font-weight:650;white-space:nowrap} .tbl tr:last-child td{border-bottom:0}
+.tbl tbody tr:nth-child(even) td{background:color-mix(in srgb,var(--sunk) 55%,transparent)}
+.code{margin:.65em 0;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--sunk)}
+.code-h{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 6px 4px 12px;font:11.5px var(--mono);color:var(--faint);border-bottom:1px solid var(--line)}
+.cbtn{border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:8px;padding:4px 11px;font-size:12.5px}
+.cbtn.ok{color:var(--ok);border-color:var(--ok)}
+.msg.ai .code pre{margin:0;border:0;border-radius:0;white-space:pre-wrap;word-break:break-word}
+.msg.ai code.ic{cursor:pointer;transition:background .2s} .msg.ai code.ic.copied{background:color-mix(in srgb,var(--ok) 30%,transparent)}
+.msg-act{display:flex;gap:6px;margin-top:8px} .msg-act .cbtn{background:transparent;color:var(--muted)}
+.msg.user.long{max-height:9.6em;overflow:hidden;-webkit-mask-image:linear-gradient(#000 70%,transparent)}
+.morebtn{align-self:flex-end;margin-top:-6px;border:0;background:none;color:var(--accent);font-size:13px;padding:2px 6px}
 .think{color:var(--faint);font-size:13.5px;display:flex;gap:8px;align-items:center}
 .think .dots::after{content:"";animation:dots 1.4s steps(4) infinite}
 @keyframes dots{0%{content:""}25%{content:"."}50%{content:".."}75%{content:"..."}}
@@ -248,26 +276,106 @@ const QUICK = [
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
-/* ───────────── 마크다운(가벼운 버전) ───────────── */
+/* ───────────── 마크다운 (옵시디언 느낌) ─────────────
+   제목 · 표 · 콜아웃(> [!note]) · 체크박스 · 중첩 목록 · 인용 · 구분선 · ==형광펜== · ~~취소선~~ · 코드 블록(언어 표시 + 복사)
+   모든 글자는 먼저 이스케이프한 뒤 서식만 입힘 (답변 안의 HTML 은 실행되지 않음) */
+const CALLOUT = {
+  note: ["📝", "#5b8def", "메모"], info: ["ℹ️", "#5b8def", "정보"], todo: ["☑️", "#5b8def", "할 일"],
+  tip: ["💡", "#2fb38c", "팁"], hint: ["💡", "#2fb38c", "힌트"], success: ["✅", "#2fb38c", "성공"], check: ["✅", "#2fb38c", "확인"], done: ["✅", "#2fb38c", "완료"],
+  question: ["❓", "#e0a23b", "질문"], help: ["❓", "#e0a23b", "도움말"], faq: ["❓", "#e0a23b", "FAQ"],
+  warning: ["⚠️", "#e0a23b", "주의"], caution: ["⚠️", "#e0a23b", "주의"], attention: ["⚠️", "#e0a23b", "주의"],
+  danger: ["⛔", "#e5534b", "위험"], error: ["❌", "#e5534b", "오류"], failure: ["❌", "#e5534b", "실패"], bug: ["🐞", "#e5534b", "버그"], important: ["❗", "#e5534b", "중요"],
+  example: ["🧪", "#9b6dff", "예시"], abstract: ["📋", "#2fb3c8", "요약"], summary: ["📋", "#2fb3c8", "요약"], tldr: ["📋", "#2fb3c8", "요약"], quote: ["❝", "#8a8a8a", "인용"], cite: ["❝", "#8a8a8a", "인용"],
+};
+const RE_FENCE = /^\s*(`{3,}|~{3,})\s*([\w+#.-]*)/, RE_LIST = /^\s*([-*+•]|\d+[.)])\s+/, RE_HR = /^\s*([-*_])(\s*\1){2,}\s*$/;
+const RE_TSEP = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/;
+function inl(s) {
+  const codes = [];
+  s = String(s).replace(/`([^`\n]+)`/g, (_, c) => { codes.push(c); return `\u0000${codes.length - 1}\u0000`; });
+  let h = esc(s)
+    .replace(/\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+    .replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, '$1<a href="$2" target="_blank" rel="noopener">$2</a>')
+    .replace(/\*\*([^*\n]+?)\*\*/g, "<strong>$1</strong>").replace(/__([^_\n]+?)__/g, "<strong>$1</strong>")
+    .replace(/(^|[^*\w])\*([^*\s][^*\n]*?)\*(?![\w*])/g, "$1<em>$2</em>").replace(/(^|[^_\w])_([^_\s][^_\n]*?)_(?![\w_])/g, "$1<em>$2</em>")
+    .replace(/~~([^~\n]+)~~/g, "<del>$1</del>").replace(/==([^=\n]+)==/g, "<mark>$1</mark>");
+  return h.replace(/\u0000(\d+)\u0000/g, (_, i) => `<code class="ic" title="눌러서 복사">${esc(codes[i])}</code>`);
+}
+function codeBlock(code, lang) {
+  return `<div class="code"><div class="code-h"><span>${esc(lang || "text")}</span><button class="cbtn" data-copy>📋 복사</button></div><pre><code>${esc(code)}</code></pre></div>`;
+}
+const cells = (l) => l.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+function table(head, sep, body) {
+  const al = cells(sep).map((c) => (/^:-+:$/.test(c) ? "center" : /-+:$/.test(c) ? "right" : ""));
+  const td = (t, c, k) => `<${t}${al[k] ? ` style="text-align:${al[k]}"` : ""}>${inl(c)}</${t}>`;
+  return `<div class="tbl"><table><thead><tr>${cells(head).map((c, k) => td("th", c, k)).join("")}</tr></thead><tbody>`
+    + body.map((r) => `<tr>${cells(r).map((c, k) => td("td", c, k)).join("")}</tr>`).join("") + "</tbody></table></div>";
+}
+function quote(buf) {
+  const m = buf[0].match(/^\s*\[!(\w+)\]([+-]?)\s*(.*)$/);
+  if (!m) return `<blockquote>${md(buf.join("\n"))}</blockquote>`;
+  const k = m[1].toLowerCase(), [ic, col, name] = CALLOUT[k] || CALLOUT.note, title = inl(m[3] || name), body = md(buf.slice(1).join("\n"));
+  if (m[2]) return `<details class="callout" style="--c:${col}"${m[2] === "+" ? " open" : ""}><summary>${ic} ${title}</summary><div class="cbody">${body}</div></details>`;
+  return `<div class="callout" style="--c:${col}"><div class="ctitle">${ic} ${title}</div>${body ? `<div class="cbody">${body}</div>` : ""}</div>`;
+}
+function list(lines) {
+  let html = ""; const st = [];
+  for (const raw of lines) {
+    const m = raw.match(/^(\s*)([-*+•]|\d+[.)])\s+(.*)$/);
+    if (!m) { html += "<br>" + inl(raw.trim()); continue; }            // 목록 항목의 이어지는 줄
+    const ind = m[1].replace(/\t/g, "    ").length, type = /\d/.test(m[2]) ? "ol" : "ul";
+    while (st.length > 1 && ind < st[st.length - 1].ind) html += `</li></${st.pop().type}>`;
+    const top = st[st.length - 1];
+    if (!top || ind > top.ind + 1) { html += `<${type}${type === "ol" ? ` start="${parseInt(m[2], 10)}"` : ""}>`; st.push({ type, ind }); }
+    else { html += "</li>"; if (top.type !== type) { html += `</${top.type}><${type}>`; top.type = type; } }
+    const task = m[3].match(/^\[( |x|X)\]\s+(.*)$/);
+    html += task ? `<li class="task"><input type="checkbox" disabled${task[1] !== " " ? " checked" : ""}>${inl(task[2])}` : `<li>${inl(m[3])}`;
+  }
+  while (st.length) html += `</li></${st.pop().type}>`;
+  return html;
+}
+function special(L, i) {
+  const l = L[i];
+  return RE_FENCE.test(l) || /^#{1,6}\s/.test(l) || RE_HR.test(l) || /^\s*>/.test(l) || RE_LIST.test(l) || (l.includes("|") && i + 1 < L.length && RE_TSEP.test(L[i + 1]));
+}
 function md(src) {
-  const blocks = String(src || "").split(/```/);
-  return blocks.map((b, i) => {
-    if (i % 2) { const nl = b.indexOf("\n"); return `<pre><code>${esc(nl >= 0 ? b.slice(nl + 1) : b)}</code></pre>`; }
-    let h = esc(b)
-      .replace(/`([^`\n]+)`/g, "<code>$1</code>")
-      .replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>")
-      .replace(/\[([^\]\n]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
-    const out = []; let list = null;
-    for (const line of h.split("\n")) {
-      const m = line.match(/^\s*(?:[-*•]|(\d+)\.)\s+(.*)/);
-      if (m) { const t = m[1] ? "ol" : "ul"; if (list !== t) { if (list) out.push(`</${list}>`); out.push(`<${t}>`); list = t; } out.push(`<li>${m[2]}</li>`); continue; }
-      if (list) { out.push(`</${list}>`); list = null; }
-      if (/^#{1,4}\s/.test(line)) out.push(`<p><b>${line.replace(/^#+\s/, "")}</b></p>`);
-      else if (line.trim()) out.push(`<p>${line}</p>`);
+  const L = String(src || "").replace(/\r/g, "").split("\n"), out = [];
+  let i = 0;
+  while (i < L.length) {
+    const l = L[i]; let m;
+    if ((m = l.match(RE_FENCE))) {                                       // ``` 코드 블록 (답변 도중이면 닫히기 전까지 그대로 표시)
+      const fence = m[1][0], buf = []; i++;
+      while (i < L.length && !(L[i].trim().startsWith(fence.repeat(3)) && !L[i].trim().replace(/[`~]/g, ""))) buf.push(L[i++]);
+      i++; out.push(codeBlock(buf.join("\n"), m[2])); continue;
     }
-    if (list) out.push(`</${list}>`);
-    return out.join("");
-  }).join("");
+    if (!l.trim()) { i++; continue; }
+    if ((m = l.match(/^(#{1,6})\s+(.*?)\s*#*\s*$/))) { const n = Math.min(m[1].length, 4) + 1; out.push(`<h${n} class="mh">${inl(m[2])}</h${n}>`); i++; continue; }
+    if (RE_HR.test(l)) { out.push("<hr>"); i++; continue; }
+    if (l.includes("|") && i + 1 < L.length && RE_TSEP.test(L[i + 1])) {
+      const head = l, sep = L[i + 1], body = []; i += 2;
+      while (i < L.length && L[i].includes("|") && L[i].trim()) body.push(L[i++]);
+      out.push(table(head, sep, body)); continue;
+    }
+    if (/^\s*>/.test(l)) { const buf = []; while (i < L.length && /^\s*>/.test(L[i])) buf.push(L[i++].replace(/^\s*>\s?/, "")); out.push(quote(buf)); continue; }
+    if (RE_LIST.test(l)) {
+      const buf = [];
+      while (i < L.length && (RE_LIST.test(L[i]) || (/^\s{2,}\S/.test(L[i]) && !RE_FENCE.test(L[i])))) buf.push(L[i++]);
+      out.push(list(buf)); continue;
+    }
+    const buf = [];
+    while (i < L.length && L[i].trim() && !special(L, i)) buf.push(inl(L[i++]));
+    out.push(`<p>${buf.join("<br>")}</p>`);
+  }
+  return out.join("");
+}
+
+/* 복사: 코드 블록 '복사' · 인라인 코드 누르기 · 답변 전체 복사 */
+async function copyText(t, btn) {
+  let ok = false;
+  try { await navigator.clipboard.writeText(t); ok = true; } catch (_) {
+    const ta = document.createElement("textarea"); ta.value = t; ta.style.cssText = "position:fixed;opacity:0"; document.body.append(ta); ta.select();
+    try { ok = document.execCommand("copy"); } catch (_) {} ta.remove();
+  }
+  if (btn) { const old = btn.innerHTML; btn.classList.add("ok"); btn.innerHTML = ok ? "✓ 복사됨" : "복사 실패"; setTimeout(() => { btn.classList.remove("ok"); btn.innerHTML = old; }, 1400); }
 }
 
 /* ───────────── 도구 이름 → 사람이 읽는 표시 ───────────── */
@@ -301,13 +409,38 @@ const S = { ws: null, sid: null, rid: 0, pending: new Map(), cur: null, tools: n
 const msgs = $("msgs"), chat = $("chat");
 function scrollDown() { requestAnimationFrame(() => { chat.scrollTop = chat.scrollHeight; }); }
 function hideEmpty() { const e = $("empty"); if (e) e.remove(); }
-function addUser(text) { hideEmpty(); const d = document.createElement("div"); d.className = "msg user"; d.textContent = text; msgs.append(d); scrollDown(); }
+function addUser(text) {
+  hideEmpty(); const d = document.createElement("div"); d.className = "msg user"; d.textContent = text; msgs.append(d);
+  // 길게 붙여넣은 내 메시지는 접어 두고 '더 보기'
+  if (text.length > 360 || text.split("\n").length > 7) {
+    d.classList.add("long"); const b = document.createElement("button"); b.className = "morebtn"; b.textContent = "더 보기 ▾";
+    b.onclick = () => { const open = d.classList.toggle("long"); b.textContent = open ? "더 보기 ▾" : "접기 ▴"; }; msgs.append(b);
+  }
+  scrollDown();
+}
 function aiNode() {
   if (!S.cur) { hideEmpty(); S.cur = { el: document.createElement("div"), text: "" }; S.cur.el.className = "msg ai caret"; msgs.append(S.cur.el); }
   return S.cur;
 }
 function aiDelta(t) { const c = aiNode(); c.text += t; c.el.innerHTML = md(c.text); c.el.classList.add("caret"); scrollDown(); }
-function aiSeal() { if (S.cur) { S.cur.el.classList.remove("caret"); if (!S.cur.text.trim()) S.cur.el.remove(); } S.cur = null; }
+function aiSeal() {
+  if (S.cur) {
+    S.cur.el.classList.remove("caret");
+    if (!S.cur.text.trim()) S.cur.el.remove();
+    else {   // 끝난 답변 아래: 전체 복사(서식 기호 포함 원문)
+      S.cur.el._raw = S.cur.text;
+      const bar = document.createElement("div"); bar.className = "msg-act";
+      bar.innerHTML = `<button class="cbtn" data-copy-msg>📋 답변 복사</button>`; S.cur.el.append(bar);
+    }
+  }
+  S.cur = null;
+}
+// 복사 버튼들 (답변이 새로 그려져도 동작하도록 한 곳에서 처리)
+msgs.addEventListener("click", (e) => {
+  const cb = e.target.closest("[data-copy]"); if (cb) { copyText(cb.closest(".code").querySelector("code").textContent, cb); return; }
+  const mb = e.target.closest("[data-copy-msg]"); if (mb) { copyText(mb.closest(".msg")._raw || "", mb); return; }
+  const ic = e.target.closest("code.ic"); if (ic) copyText(ic.textContent, null).then(() => { ic.classList.add("copied"); setTimeout(() => ic.classList.remove("copied"), 900); });
+});
 let thinkEl = null, thinkT0 = 0, thinkTimer = null, thinkKind = "wait";
 function showThink(kind) {
   if (!S.busy) return;

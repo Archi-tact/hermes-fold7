@@ -45,6 +45,10 @@ jobs:
           PW="$(grep -oP '비밀번호 \K\S+' "$RUNNER_TEMP/setup.log" | head -1)"; echo "::add-mask::$PW"; echo "FOLD_PASSWORD=$PW" >> "$GITHUB_ENV"
           sed "s/$PW/********/" "$RUNNER_TEMP/setup.log"; rm -f "$RUNNER_TEMP/setup.log"
           bash scripts/80-hermes-fold.sh start
+          # 이미 설치된 폰처럼: 플러그인을 지운 뒤 update 가 다시 설치·허용·재시작하는지 (조용히 멈추면 실패)
+          rm -rf "$HOME/.hermes/plugins/fold-upload"
+          bash scripts/80-hermes-fold.sh update | tee "$RUNNER_TEMP/update.log"
+          grep -q "화면 파일 갱신 완료" "$RUNNER_TEMP/update.log" && grep -q "서버 재시작" "$RUNNER_TEMP/update.log"
           bash scripts/80-hermes-fold.sh remote-on | sed 's/Session token : .*/Session token : ***/'
           bash scripts/80-hermes-fold.sh status
           echo "--- 열려 있는 포트 9130 ---"; ss -ltn | grep 9130 | tee "$RUNNER_TEMP/ports.txt"

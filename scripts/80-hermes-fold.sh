@@ -224,9 +224,9 @@ case "${1:-}" in
   setup) setup ;;
   update) put_web
           # 파일 첨부 플러그인이 새로 생기거나 바뀌었으면 서버를 다시 켜야 적용됨
-          before="$(G sh -c "cat '$PLUGIN_GUEST/dashboard/plugin_api.py' '$PLUGIN_GUEST/dashboard/manifest.json' 2>/dev/null" | cksum)"
+          before="$({ G sh -c "cat '$PLUGIN_GUEST/dashboard/plugin_api.py' '$PLUGIN_GUEST/dashboard/manifest.json' 2>/dev/null" || true; } | cksum)"
           put_plugin
-          after="$(G sh -c "cat '$PLUGIN_GUEST/dashboard/plugin_api.py' '$PLUGIN_GUEST/dashboard/manifest.json' 2>/dev/null" | cksum)"
+          after="$({ G sh -c "cat '$PLUGIN_GUEST/dashboard/plugin_api.py' '$PLUGIN_GUEST/dashboard/manifest.json' 2>/dev/null" || true; } | cksum)"
           enable_plugin && before="(새로 켬)"
           if [ "$before" != "$after" ] && running; then say "파일 첨부 기능 설치 → 서버 재시작"; stop >/dev/null; start >/dev/null; fi
           say "화면 파일 갱신 완료 → 앱 다시 열기(브라우저는 새로고침)" ;;

@@ -62,14 +62,14 @@ public class ChatActivity extends Activity {
         root.setBackgroundColor(Color.parseColor("#1b1a18"));
         root.addView(web, new FrameLayout.LayoutParams(-1, -1));
         root.setOnApplyWindowInsetsListener((v, in) -> {
-            int l, t, r, b;
+            int pl, pt, pr, pb;
             if (Build.VERSION.SDK_INT >= 30) {
-                Insets s = in.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout() | WindowInsets.Type.ime());
-                l = s.left; t = s.top; r = s.right; b = s.bottom;
+                Insets bars = in.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout() | WindowInsets.Type.ime());
+                pl = bars.left; pt = bars.top; pr = bars.right; pb = bars.bottom;
             } else {
-                l = in.getSystemWindowInsetLeft(); t = in.getSystemWindowInsetTop(); r = in.getSystemWindowInsetRight(); b = in.getSystemWindowInsetBottom();
+                pl = in.getSystemWindowInsetLeft(); pt = in.getSystemWindowInsetTop(); pr = in.getSystemWindowInsetRight(); pb = in.getSystemWindowInsetBottom();
             }
-            v.setPadding(l, t, r, b);
+            v.setPadding(pl, pt, pr, pb);
             return in;
         });
         setContentView(root);

@@ -20,7 +20,15 @@ set_cfg approvals.timeout 120
 set_cfg approvals.cron_mode deny
 set_cfg approvals.single_query_mode deny
 set_cfg approvals.unattended_mode deny
-DENY='["termux-*","adb","adb *","*phone-bridge*","*.hermes-bridge*","*authorized_keys*","*sshd_config*","*.hermes/config.yaml*","*.hermes/.env*","su","su *","pm uninstall*","pm clear*","phone-hands-pair*","*hands.token*","rm -rf ~*","rm -rf /sdcard*","rm -rf /storage*","rm -rf /data*","git push --force*","git push -f*","*curl*|*sh*","*wget*|*sh*","*curl*|*bash*","*wget*|*bash*"]'
+# 차단 목록은 실제 폰과 같게: scripts/20-harden.sh 의 DENY_JSON 을 그대로 읽어 씀 (복사본을 두면 어긋남)
+DENY="$(python3 - <<'PY'
+import json, re
+s = open('/kit/scripts/20-harden.sh', encoding='utf-8').read()
+m = re.search(r"DENY_JSON=\"\$\(jq -cn '(\[.*?\])'\)\"", s, re.S)
+print(json.dumps(json.loads(m.group(1)), separators=(',', ':')))
+PY
+)"
+[ -n "$DENY" ] || { echo "20-harden.sh 에서 차단 목록을 못 읽음"; exit 1; }
 set_cfg approvals.deny "$DENY"
 set_cfg terminal.cwd "$WS"
 set_cfg HERMES_WRITE_SAFE_ROOT "$WS"

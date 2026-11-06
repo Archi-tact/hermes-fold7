@@ -112,6 +112,17 @@ textarea{flex:1;border:0;outline:0;resize:none;background:none;color:var(--text)
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .tog{border:1px solid var(--line);border-radius:12px;padding:10px;text-align:left;background:var(--bg);font-size:13px;display:flex;flex-direction:column;gap:2px}
 .tog b{font-size:14px} .tog:hover{border-color:var(--accent)}
+.tog{position:relative} .tog .x{position:absolute;top:4px;right:4px;width:24px;height:24px;border-radius:50%;border:0;background:var(--bad);color:#fff;font-size:12px;display:none}
+.editing .tog .x{display:block} .editing .tog{border-style:dashed}
+.hrow{display:flex;align-items:center;gap:6px}
+.mini{border:1px solid var(--line);background:var(--bg);color:var(--text);border-radius:9px;padding:4px 9px;font-size:12px}
+.mini.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+.addrow{display:flex;flex-direction:column;gap:6px;margin:0 0 10px}
+.addrow input{padding:9px 10px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--text);font:14px var(--sans)}
+.recent{display:flex;flex-direction:column;gap:6px}
+.ritem{display:flex;gap:6px;align-items:stretch}
+.ritem .rrun{flex:1;min-width:0;text-align:left;border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--bg);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ritem .rrun small{color:var(--faint);margin-left:4px} .ritem .rpin{border:1px solid var(--line);border-radius:10px;background:var(--bg);width:38px;font-size:16px}
 .outline{font:11.5px/1.45 var(--mono);white-space:pre;overflow:auto;max-height:240px;color:var(--muted);margin:0}
 .hint{font-size:12px;color:var(--faint)}
 .scrim{display:none;position:fixed;inset:0;z-index:29}
@@ -188,8 +199,15 @@ textarea{flex:1;border:0;outline:0;resize:none;background:none;color:var(--text)
         <div class="hint" style="margin-top:8px">조작 중엔 폰 화면 가운데 ⏸ 로 멈추고, 볼륨↓ 3번이면 비상정지.</div>
       </div>
       <div class="card">
-        <h5>빠른 설정 — 화면 터치 없이 바로</h5>
+        <h5 class="hrow">⭐ 내 바로가기<span style="flex:1"></span><button class="mini" id="qEdit">편집</button><button class="mini" id="qAdd">＋ 추가</button></h5>
+        <div class="addrow" id="qForm" hidden>
+          <input id="qText" placeholder="시킬 말 (예: 알람 7시에 맞춰줘)" enterkeyhint="done">
+          <input id="qName" placeholder="버튼 이름 (비우면 자동)" enterkeyhint="done">
+          <button class="mini pri" id="qSave">추가</button>
+        </div>
         <div class="grid" id="quick"></div>
+        <h5 class="hrow" style="margin-top:14px">🕘 최근 잘 된 요청<span style="flex:1"></span><span class="hint" style="white-space:nowrap">☆ 고정</span></h5>
+        <div class="recent" id="recent"></div>
       </div>
       <div class="card">
         <h5>마지막으로 읽은 화면 구조</h5>
@@ -399,7 +417,10 @@ function onEvent(e) {
     case "tool.complete": toolDone(p); if (S.busy) showThink("wait"); break;
     case "message.complete": {
       if (!S.cur && typeof p.text === "string" && p.text && !p.response_reused) aiDelta(p.text);
+      const failed = p.status === "error" || !!p.error || p.status === "interrupted" || p.status === "cancelled";
       if (p.status === "error" || p.error) { aiDelta("\n\n⚠️ " + (p.error || "오류")); }
+      if (!failed && S.lastPrompt) recordSuccess(S.lastPrompt);   // 잘 끝난 요청 → '최근 잘 된 요청'
+      S.lastPrompt = null;
       aiSeal(); setBusy(false); loadSessions(); break;
     }
     case "request.cancel": break;
@@ -511,11 +532,11 @@ async function loadSessions() {
 async function send(text) {
   text = (text ?? $("input").value).trim(); if (!text) return;
   if (S.busy) return;
-  $("input").value = ""; autosize(); addUser(text); setBusy(true);
+  $("input").value = ""; autosize(); addUser(text); setBusy(true); S.lastPrompt = text;
   try { if (!S.sid) await newSession(); hideEmpty(); await call("prompt.submit", { session_id: S.sid, text }); }
   catch (e) { aiDelta("⚠️ 보내지 못했어요: " + e.message); aiSeal(); setBusy(false); }
 }
-async function stop() { try { await call("session.interrupt", { session_id: S.sid }); } catch (_) {} setBusy(false); }
+async function stop() { S.lastPrompt = null; try { await call("session.interrupt", { session_id: S.sid }); } catch (_) {} setBusy(false); }
 
 /* ───────────── UI 연결 ───────────── */
 const input = $("input");
@@ -525,8 +546,61 @@ input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey 
 $("send").onclick = () => (S.busy ? stop() : send());
 $("chips").innerHTML = CHIPS.map((c) => `<button class="chip">${esc(c)}</button>`).join("");
 $("chips").querySelectorAll(".chip").forEach((b) => b.onclick = () => send(b.textContent));
-$("quick").innerHTML = QUICK.map(([i, t, p]) => `<button class="tog" data-p="${esc(p)}"><span>${i}</span><b>${esc(t)}</b></button>`).join("");
-$("quick").querySelectorAll(".tog").forEach((b) => b.onclick = () => { closeDrawers(); send(b.dataset.p); });
+/* ───────────── 내 바로가기 · 최근 잘 된 요청 ─────────────
+   바로가기: 기본 6개로 시작 → ＋ 추가 / 편집(✕ 삭제) / 최근 목록에서 ☆ 고정. 최근: 오류 없이 끝난 요청을 자동 기록.
+   (이 앱(기기)의 저장소에 보관 — 다른 기기·브라우저와는 따로) */
+const SC = {
+  load(k, d) { try { const v = JSON.parse(store.get(k) || "null"); return v ?? d; } catch (_) { return d; } },
+  save(k, v) { store.set(k, JSON.stringify(v)); },
+};
+const ICONS = [[/다크|어둡/, "🌙"], [/밝기|밝게/, "☀️"], [/방해/, "🔕"], [/절전|배터리/, "🔋"], [/와이파이|wifi/i, "📶"], [/블루투스/, "🎧"],
+  [/볼륨|음량|소리/, "🔊"], [/날씨/, "🌤️"], [/알람|타이머/, "⏰"], [/일정|캘린더/, "📅"], [/카톡|카카오|메시지|문자/, "💬"], [/계산/, "🧮"],
+  [/사진|카메라/, "📷"], [/유튜브|음악|노래/, "🎵"], [/검색|찾아/, "🔎"], [/메모|기록/, "📝"], [/길|지도|교통/, "🗺️"], [/설정/, "⚙️"]];
+const iconFor = (p) => (ICONS.find(([re]) => re.test(p)) || [, "⚡"])[1];
+const shortName = (p) => { const s = p.replace(/\s*\(.*?\)\s*/g, " ").replace(/(해\s?줘|해\s?주세요|알려\s?줘|켜\s?줘|꺼\s?줘|줘)\s*[.!?]*$/, "").trim(); return (s || p).slice(0, 16); };
+function pins() {
+  let v = SC.load("fold.pins", null);
+  if (!Array.isArray(v)) { v = QUICK.map(([i, t, p]) => ({ i, t, p })); SC.save("fold.pins", v); }
+  return v;
+}
+function addPin(p, t) {
+  p = String(p || "").trim(); if (!p) return;
+  const v = pins().filter((x) => x.p !== p);
+  v.unshift({ i: iconFor(p), t: (String(t || "").trim() || shortName(p)).slice(0, 18), p });
+  SC.save("fold.pins", v.slice(0, 16)); renderQuick();
+}
+function delPin(p) { SC.save("fold.pins", pins().filter((x) => x.p !== p)); renderQuick(); }
+function recordSuccess(p) {
+  p = String(p || "").trim(); if (!p || p.length > 160) return;
+  const h = SC.load("fold.hist", []), e = h.find((x) => x.p === p);
+  if (e) { e.n++; e.last = Date.now(); } else h.push({ p, n: 1, last: Date.now() });
+  h.sort((a, b) => b.last - a.last); SC.save("fold.hist", h.slice(0, 40)); renderQuick();
+}
+function renderQuick() {
+  const P = pins(), pinned = new Set(P.map((x) => x.p));
+  $("quick").innerHTML = P.map((x) => `<button class="tog" data-p="${esc(x.p)}" title="${esc(x.p)}"><span>${esc(x.i || iconFor(x.p))}</span><b>${esc(x.t)}</b><i class="x" data-del="${esc(x.p)}" role="button" aria-label="삭제">✕</i></button>`).join("")
+    || `<div class="hint" style="grid-column:1/-1">＋ 추가 또는 아래 ☆ 로 바로가기를 만들어요.</div>`;
+  // 자주(횟수) + 최근을 함께 고려: 최근 7일 안이면 횟수 가중
+  const now = Date.now(), H = SC.load("fold.hist", []).filter((x) => !pinned.has(x.p))
+    .map((x) => ({ ...x, s: x.n * (now - x.last < 7 * 864e5 ? 2 : 1) + x.last / 1e13 })).sort((a, b) => b.s - a.s).slice(0, 6);
+  $("recent").innerHTML = H.length ? H.map((x) => `<div class="ritem"><button class="rrun" data-p="${esc(x.p)}">${iconFor(x.p)} ${esc(x.p)}${x.n > 1 ? `<small>×${x.n}</small>` : ""}</button><button class="rpin" data-pin="${esc(x.p)}" aria-label="바로가기에 고정">☆</button></div>`).join("")
+    : `<div class="hint">Hermes 가 오류 없이 끝낸 요청이 여기 자동으로 모여요.</div>`;
+}
+$("quick").addEventListener("click", (e) => {
+  const del = e.target.closest("[data-del]"); if (del) { e.stopPropagation(); delPin(del.dataset.del); return; }
+  const b = e.target.closest(".tog"); if (!b || $("quick").classList.contains("editing")) return;
+  closeDrawers(); send(b.dataset.p);
+});
+$("recent").addEventListener("click", (e) => {
+  const pin = e.target.closest("[data-pin]"); if (pin) { addPin(pin.dataset.pin); return; }
+  const r = e.target.closest(".rrun"); if (r) { closeDrawers(); send(r.dataset.p); }
+});
+$("qEdit").onclick = () => { const on = $("quick").classList.toggle("editing"); $("qEdit").textContent = on ? "완료" : "편집"; };
+$("qAdd").onclick = () => { $("qForm").hidden = !$("qForm").hidden; if (!$("qForm").hidden) $("qText").focus(); };
+const qSave = () => { if (!$("qText").value.trim()) { $("qText").focus(); return; } addPin($("qText").value, $("qName").value); $("qText").value = ""; $("qName").value = ""; $("qForm").hidden = true; };
+$("qSave").onclick = qSave;
+[$("qText"), $("qName")].forEach((i) => i.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); qSave(); } }));
+renderQuick();
 $("newChat").onclick = () => { closeDrawers(); newSession().then(loadSessions); };
 function closeDrawers() { $("side").classList.remove("open"); $("phone").classList.remove("open"); $("scrim").classList.remove("on"); }
 $("openSide").onclick = () => { $("side").classList.add("open"); $("scrim").classList.add("on"); };

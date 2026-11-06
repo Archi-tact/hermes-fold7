@@ -43,6 +43,7 @@ public class ChatActivity extends Activity {
         s.setMediaPlaybackRequiresUserGesture(true);
         s.setAllowFileAccess(false);
         s.setAllowContentAccess(false);
+        s.setCacheMode(WebSettings.LOAD_NO_CACHE);   // 폰 안 서버라 빠름 · 화면 업데이트(80-hermes-fold.sh update)가 바로 보이게
         CookieManager.getInstance().setAcceptCookie(true);   // 로그인(30일) 유지
         web.setWebChromeClient(new WebChromeClient());
         web.setWebViewClient(new WebViewClient() {

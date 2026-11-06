@@ -242,7 +242,7 @@ if [ -n "$GAME" ] && launch "$GAME"; then
       left)  a=($((GX+R)) $GY $((GX-R)) $GY) ;;
       right) a=($((GX-R)) $GY $((GX+R)) $GY) ;;
     esac
-    r="$(ph "g$((++NC))" hands-swipe "${a[@]}" 180)"
+    r="$(ph "g$((++NC))" hands-swipe "${a[@]}" 400)"   # Hermes 기본 속도(0.4초)
     [ "$(jqv .ok "$r")" = true ] && SWIPES=$((SWIPES+1)) || echo "     swipe $dir → $r"
     sleep 0.6; cur="$(board_sig)"
     if [ -n "$cur" ] && [ "$cur" != "$prev" ]; then MOVED=$((MOVED+1)); echo "     스와이프 $dir → 판 움직임 ($cur)"

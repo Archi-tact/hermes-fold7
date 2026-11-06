@@ -17,7 +17,7 @@ LOG_DIR="$HOME/.hermes-bridge/logs"; mkdir -p "$LOG_DIR"
 if [ -d "$HOME/.hermes-fold" ] && [ -x "$HOME/hermes-fold7/scripts/80-hermes-fold.sh" ]; then
   HERMES_MODE="$MODE" bash "$HOME/hermes-fold7/scripts/80-hermes-fold.sh" start >> "$LOG_DIR/fold.log" 2>&1
   termux-notification --id hermes-fold --ongoing --title "Hermes" --content "Hermes Fold 실행 중 · 눌러서 열기" \
-    --action "termux-open-url http://127.0.0.1:${FOLD_PORT:-9130}" \
+    --action "pm path ai.hermesfold7.hands >/dev/null 2>&1 && am start -n ai.hermesfold7.hands/.ChatActivity >/dev/null 2>&1 || termux-open-url http://127.0.0.1:${FOLD_PORT:-9130}" \
     --button1 "끄기" --button1-action "bash $HOME/hermes-fold7/scripts/80-hermes-fold.sh stop; termux-notification-remove hermes-fold"
 fi
 

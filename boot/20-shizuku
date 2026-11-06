@@ -1,0 +1,18 @@
+#!/data/data/com.termux/files/usr/bin/sh
+# Termux:Boot → ~/.termux/boot/20-shizuku  (45-shizuku.sh 가 설치)
+# 매일 밤 자동 재시작 대비: Shizuku 가 스스로 다시 켜졌는지 확인하고, 안 켜졌으면 알림으로 알려줌.
+#   (실제 재시작은 Shizuku 앱의 '부팅 시 시작' 기능이 함 — 무선 디버깅이라 와이파이 연결 필요)
+#   이 스크립트는 셸 권한을 쓰지 않고 'id -u' 확인만 함.
+(
+  sleep 90                                   # 와이파이 연결 + Shizuku 자동 시작 기다림
+  for _ in 1 2 3 4 5 6 7 8 9 10; do          # 최대 약 5분 더 확인
+    if [ "$(timeout 8 rish -c 'id -u' </dev/null 2>/dev/null | tr -dc '0-9')" = 2000 ]; then
+      termux-notification-remove shizuku-off 2>/dev/null
+      exit 0
+    fi
+    sleep 30
+  done
+  termux-notification --id shizuku-off --title "Shizuku 가 꺼져 있어요" \
+    --content "와이파이 연결 → 눌러서 Shizuku 앱 → '시작'. (그 전엔 5G 에서 설정 변경 불가)" \
+    --action "am start -n moe.shizuku.privileged.api/moe.shizuku.manager.MainActivity"
+) >/dev/null 2>&1 &

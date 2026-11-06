@@ -28,7 +28,7 @@
 html,body{height:100%;margin:0}
 body{background:var(--bg);color:var(--text);font:15px/1.55 var(--sans);-webkit-font-smoothing:antialiased;overflow:hidden}
 button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
-.app{display:grid;grid-template-columns:1fr;height:100dvh}
+.app{display:grid;grid-template-columns:1fr;height:100%}  /* 100dvh 는 일부 WebView(폴드 펼침)에서 실제 화면보다 커서 입력창이 밀려남 */
 /* ── 사이드바(대화 목록) ── */
 .side{display:none;flex-direction:column;background:var(--sunk);border-right:1px solid var(--line);min-width:0}
 .side.open{display:flex;position:fixed;inset:0 auto 0 0;width:min(86vw,300px);z-index:30;box-shadow:0 0 0 100vmax rgba(0,0,0,.35)}

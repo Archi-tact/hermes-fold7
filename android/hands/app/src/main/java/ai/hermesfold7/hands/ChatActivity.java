@@ -70,7 +70,8 @@ public class ChatActivity extends Activity {
                 pl = in.getSystemWindowInsetLeft(); pt = in.getSystemWindowInsetTop(); pr = in.getSystemWindowInsetRight(); pb = in.getSystemWindowInsetBottom();
             }
             v.setPadding(pl, pt, pr, pb);
-            return in;
+            // 여백은 앱이 줬으니 웹 화면에는 '여백 0'으로 전달 (안 그러면 화면 CSS 의 safe-area 여백과 겹쳐 두 배가 됨)
+            return Build.VERSION.SDK_INT >= 30 ? WindowInsets.CONSUMED : in.consumeSystemWindowInsets();
         });
         setContentView(root);
         if (b != null) web.restoreState(b);

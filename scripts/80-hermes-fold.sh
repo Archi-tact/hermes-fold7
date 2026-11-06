@@ -43,6 +43,17 @@ if [ "$MODE" = proot ]; then PLUGIN_GUEST="/root/.hermes/plugins/fold-upload"; e
 put_plugin() {
   tar -C "$KIT/ui/fold-plugin" -cf - . | G sh -c "rm -rf '$PLUGIN_GUEST' && mkdir -p '$PLUGIN_GUEST' && tar -xf - -C '$PLUGIN_GUEST' && chmod -R go-w '$PLUGIN_GUEST'"
 }
+# 최신 Hermes 는 사용자 플러그인을 plugins.enabled 허용 목록에 있어야만 켬 → 기존 목록은 그대로 두고 fold-upload 만 추가
+#   반환: 0 = 이번에 새로 추가함(서버 재시작 필요), 1 = 이미 있음
+enable_plugin() {
+  local cur names json
+  cur="$(get_value plugins.enabled 2>/dev/null || true)"
+  names="$(printf '%s\n' "$cur" | grep -oE '[A-Za-z0-9_][A-Za-z0-9_./-]*' | grep -vxE 'None|null|none|plugins|enabled|true|false' || true)"
+  printf '%s\n' "$names" | grep -qx 'fold-upload' && return 1
+  json="[$(printf '%s\nfold-upload\n' "$names" | grep . | sort -u | sed 's/.*/"&"/' | paste -sd, -)]"   # 이름은 안전한 글자만이라 그대로 JSON
+  $HC config set plugins.enabled "$json" >/dev/null
+  return 0
+}
 token() { G cat "$TOKEN_GUEST" 2>/dev/null; }
 make_token() {
   token | grep -q . && return 0
@@ -129,6 +140,7 @@ setup() {
   say "화면 파일 설치 → $WEB_GUEST ($MODE)"
   put_web
   put_plugin
+  enable_plugin || true
   say "PC Desktop 연결용 토큰"
   make_token
   local ts; ts="$(tailscale_ip || true)"
@@ -215,6 +227,7 @@ case "${1:-}" in
           before="$(G sh -c "cat '$PLUGIN_GUEST/dashboard/plugin_api.py' '$PLUGIN_GUEST/dashboard/manifest.json' 2>/dev/null" | cksum)"
           put_plugin
           after="$(G sh -c "cat '$PLUGIN_GUEST/dashboard/plugin_api.py' '$PLUGIN_GUEST/dashboard/manifest.json' 2>/dev/null" | cksum)"
+          enable_plugin && before="(새로 켬)"
           if [ "$before" != "$after" ] && running; then say "파일 첨부 기능 설치 → 서버 재시작"; stop >/dev/null; start >/dev/null; fi
           say "화면 파일 갱신 완료 → 앱 다시 열기(브라우저는 새로고침)" ;;
   notify-setup) notify_setup; say "답변 알림 설정 완료 — 서버 재시작 후 적용"; running && { stop; start; } ;;

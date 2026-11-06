@@ -109,6 +109,11 @@ phone hands-click 12                          # click node i=12 from the last du
 phone hands-dump                              # verify the screen changed as expected
 ```
 
+If the user is watching the **Hermes chat app**, `hands-launch` / `hands-open` open the app *beside* the chat
+(split screen, result has `"split":true`), so the user can follow your progress. The protective cover then sits only
+over the controlled app. Prefer `hands-click` / `hands-run` over `hands-back` in split screen (Back goes to whichever
+half the user touched last).
+
 `hands-dump` returns `nodes`: `{i, cls, text?, desc?, id?, b:[left,top,right,bottom], click?, edit?, scroll?, checked?, pw?}`.
 - Pick nodes by meaning (text/desc/id), not by position. Indexes are only valid for the latest dump: dump again after every action that changes the screen.
 - `phone hands-click text:디스플레이` or `phone hands-click id:com.app:id/search` also work.

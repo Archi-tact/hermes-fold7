@@ -24,6 +24,7 @@ import android.view.View;
 import android.view.WindowManager;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
+import android.view.accessibility.AccessibilityWindowInfo;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
@@ -88,7 +89,7 @@ public class HandsService extends AccessibilityService {
     // 세션 상태
     private volatile boolean active = false, paused = false;
     private volatile long deadline = 0, lastRequest = 0;
-    private volatile String title = "", step = "";
+    private volatile String title = "", step = "", progress = "";   // progress: 여러 단계 실행 중 "3/7"
     private final Set<String> allowed = new HashSet<>();
     private volatile int stepMs = 700, highlightMs = 500;
     private final List<AccessibilityNodeInfo> lastDump = new ArrayList<>();
@@ -339,8 +340,44 @@ public class HandsService extends AccessibilityService {
     }
 
     private String foreground() {
-        AccessibilityNodeInfo root = getRootInActiveWindow();
+        AccessibilityNodeInfo root = targetRoot();
         return root == null || root.getPackageName() == null ? null : root.getPackageName().toString();
+    }
+
+    /**
+     * 조작 대상 창. 화면 분할/팝업으로 Hermes 대화창이 같이 떠 있으면 '활성 창'은 대화창일 수 있음
+     * → 세션 중에는 허용된 앱의 창을 우선 찾고, 없으면 활성 창(기존 동작: 허용 검사에서 거부됨).
+     */
+    private AccessibilityNodeInfo targetRoot() {
+        AccessibilityWindowInfo w = targetWindow();
+        if (w != null) { AccessibilityNodeInfo r = w.getRoot(); if (r != null) return r; }
+        return getRootInActiveWindow();
+    }
+
+    private AccessibilityWindowInfo targetWindow() {
+        if (!active) return null;
+        AccessibilityWindowInfo best = null;
+        try {
+            for (AccessibilityWindowInfo w : getWindows()) {
+                if (w.getType() != AccessibilityWindowInfo.TYPE_APPLICATION) continue;
+                AccessibilityNodeInfo r = w.getRoot();
+                if (r == null || r.getPackageName() == null) continue;
+                boolean ok; synchronized (allowed) { ok = allowed.contains(r.getPackageName().toString()); }
+                if (!ok) continue;
+                if (w.isActive() || w.isFocused()) return w;
+                if (best == null) best = w;
+            }
+        } catch (Exception e) { Log.w(TAG, "windows: " + e); }
+        return best;
+    }
+
+    /** 보호막을 덮을 영역 = 조작 중인 앱 창 (전체 화면이면 전체, 화면 분할이면 그 칸만 → 대화창은 계속 보이고 만질 수 있음). */
+    private Rect targetBounds() {
+        AccessibilityWindowInfo w = targetWindow();
+        if (w == null) return null;
+        Rect b = new Rect();
+        w.getBoundsInScreen(b);
+        return b.isEmpty() ? null : b;
     }
 
     static boolean denied(String pkg) {
@@ -354,7 +391,7 @@ public class HandsService extends AccessibilityService {
         String bad = checkForeground();
         if (bad != null) return err(bad);
         setStep("화면 읽는 중");
-        AccessibilityNodeInfo root = getRootInActiveWindow();
+        AccessibilityNodeInfo root = targetRoot();
         lastDump.clear();
         JSONArray nodes = new JSONArray();
         walk(root, 0, nodes);
@@ -399,7 +436,7 @@ public class HandsService extends AccessibilityService {
         }
         String text = q.optString("text", null);
         String id = q.optString("id", null);
-        AccessibilityNodeInfo root = getRootInActiveWindow();
+        AccessibilityNodeInfo root = targetRoot();
         if (root == null) return null;
         if (q.has("match") || q.optBoolean("edit", false)) {
             Pattern pat = q.has("match") ? Pattern.compile(q.optString("match"), Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE) : null;
@@ -438,7 +475,14 @@ public class HandsService extends AccessibilityService {
         if (steps == null || steps.length() == 0) return err("steps required");
         if (steps.length() > MAX_STEPS) return err("too many steps (max " + MAX_STEPS + ")");
         JSONArray report = new JSONArray();
+        try {
+            return runSteps(steps, report);
+        } finally { progress = ""; }
+    }
+
+    private JSONObject runSteps(JSONArray steps, JSONArray report) throws Exception {
         for (int i = 0; i < steps.length(); i++) {
+            progress = (i + 1) + "/" + steps.length();                 // 진행바: "단계 3/7"
             if (!active) return err("session ended").put("done", i).put("report", report);
             if (paused && !waitWhilePaused(25_000)) return err("paused").put("paused", true).put("done", i).put("report", report);
             lastRequest = System.currentTimeMillis();                 // 긴 스크립트 중 '유휴 종료' 방지
@@ -477,7 +521,7 @@ public class HandsService extends AccessibilityService {
                 long until = System.currentTimeMillis() + ("assert".equals(op) ? 0 : clamp(st.optInt("ms", 8000), 0, 30_000));
                 setStep(("assert".equals(op) ? "확인: " : "기다림: ") + st.optString("match"));
                 do {
-                    AccessibilityNodeInfo root = getRootInActiveWindow();
+                    AccessibilityNodeInfo root = targetRoot();
                     Pattern pat = Pattern.compile(st.optString("match"), Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
                     AccessibilityNodeInfo n = findMatch(root, pat, false, 0);
                     if (n != null) return ok().put("clicked", label(n));
@@ -549,7 +593,7 @@ public class HandsService extends AccessibilityService {
             cands.add(n);
         } else {
             // 화면의 스크롤 영역을 모두 모아 '가장 안쪽(구체적인) 목록'부터 시도 — 겉 컨테이너는 실제로 안 움직이는 경우가 많음
-            collectScrollables(getRootInActiveWindow(), 0, cands);
+            collectScrollables(targetRoot(), 0, cands);
             if (cands.isEmpty()) return err("no scrollable node");
             Collections.reverse(cands);
         }
@@ -610,10 +654,22 @@ public class HandsService extends AccessibilityService {
         if (denied(pkg)) return err("denied package (은행·결제·인증 앱): " + pkg);
         Intent it = getPackageManager().getLaunchIntentForPackage(pkg);
         if (it == null) return err("not launchable (설치 안 됨?): " + pkg);
-        it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
-        startActivity(it);
+        boolean split = startApp(it, q);
         Thread.sleep(1500);
-        return ok().put("opened", pkg).put("foreground", foreground());
+        return ok().put("opened", pkg).put("split", split).put("foreground", foreground());
+    }
+
+    /**
+     * 앱 실행. Hermes 대화창이 화면에 보이면 그 앱을 대화창 '옆 칸(화면 분할)'에 열어 진행 상황을 계속 보이게 함.
+     * (beside:false 로 끄거나, 접힌 화면처럼 분할이 안 되면 기존처럼 전체 화면)  반환: 대화창 옆으로 열었는지
+     */
+    private boolean startApp(Intent it, JSONObject q) throws InterruptedException {
+        it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
+        ChatActivity chat = q.optBoolean("beside", true) ? ChatActivity.visible() : null;
+        final boolean[] split = {false};
+        if (chat != null) runOnMain(() -> split[0] = chat.launchAdjacent(it));
+        if (!split[0]) startActivity(it);
+        return split[0];
     }
 
     private JSONObject launch(JSONObject q) throws Exception {
@@ -623,10 +679,10 @@ public class HandsService extends AccessibilityService {
         if (it == null) return err("not launchable: " + pkg);
         setStep("앱 실행: " + pkg);
         Thread.sleep(highlightMs);
-        it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
-        startActivity(it);
+        boolean split = startApp(it, q);
         Thread.sleep(Math.max(stepMs, 1200)); // 앱이 뜰 시간
-        return ok().put("foreground", foreground());
+        main.post(this::updateBanner);         // 보호막을 새 앱 창(분할 칸)에 맞춤
+        return ok().put("split", split).put("foreground", foreground());
     }
 
     private JSONObject tap(JSONObject q) throws Exception {
@@ -744,9 +800,40 @@ public class HandsService extends AccessibilityService {
                         | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
                 PixelFormat.TRANSLUCENT);
         overlayLp.gravity = Gravity.TOP | Gravity.START;
+        overlayFrame = frame;
+        overlayControls = controls;
+        lastArea = null;
+        layoutOverlay();
         wm.addView(overlay, overlayLp);
         applyPausedUi();
         updateBanner();
+    }
+
+    private GradientDrawable overlayFrame;
+    private View overlayControls;
+    private String lastArea;
+
+    /**
+     * 보호막 위치·크기를 조작 중인 앱 창에 맞춤 (1초마다·단계마다 호출).
+     *  · 대상 앱 창이 있으면: 그 창만 덮고 터치 차단 (전체 화면 앱이면 기존처럼 전체)
+     *  · 아직 대상 창이 없고 Hermes 대화창이 보이면: 위쪽 진행 표시줄만 (터치 통과 → 대화창 그대로 사용)
+     *  · 그 외: 전체 화면 (기존 동작)
+     */
+    private void layoutOverlay() {
+        if (overlay == null || overlayLp == null) return;
+        Rect b = targetBounds();
+        boolean strip = b == null && ChatActivity.visible() != null;
+        String area = strip ? "strip" : b == null ? "full" : b.flattenToString();
+        if (area.equals(lastArea)) return;
+        lastArea = area;
+        if (b != null) { overlayLp.x = b.left; overlayLp.y = b.top; overlayLp.width = b.width(); overlayLp.height = b.height(); }
+        else { overlayLp.x = 0; overlayLp.y = 0; overlayLp.width = WindowManager.LayoutParams.MATCH_PARENT;
+               overlayLp.height = strip ? WindowManager.LayoutParams.WRAP_CONTENT : WindowManager.LayoutParams.MATCH_PARENT; }
+        if (strip) overlayLp.flags |= WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE;
+        else overlayLp.flags &= ~WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE;
+        overlay.setBackground(strip ? null : overlayFrame);
+        overlayControls.setVisibility(strip ? View.GONE : View.VISIBLE);
+        if (overlay.isAttachedToWindow()) { try { wm.updateViewLayout(overlay, overlayLp); } catch (Exception e) { Log.w(TAG, "overlay layout: " + e); } }
     }
 
     private Button roundButton(Context c, String label, int color, int size) {
@@ -789,8 +876,8 @@ public class HandsService extends AccessibilityService {
         runOnMain(() -> {
             if (highlight == null) return;
             FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(Math.max(b.width(), dp(24)), Math.max(b.height(), dp(24)));
-            lp.leftMargin = b.left;
-            lp.topMargin = b.top;
+            lp.leftMargin = b.left - overlayLp.x;   // 보호막이 앱 창(화면 분할 칸)에만 있을 수 있음 → 창 기준 좌표로
+            lp.topMargin = b.top - overlayLp.y;
             highlight.setLayoutParams(lp);
             highlight.setVisibility(View.VISIBLE);
         });
@@ -801,9 +888,11 @@ public class HandsService extends AccessibilityService {
 
     private void updateBanner() {
         if (banner == null || !active) return;
+        layoutOverlay();
         long left = Math.max(0, (deadline - System.currentTimeMillis()) / 1000);
         String state = paused ? "⏸ 일시정지됨 — ▶ 재개 / ■ 중지" : "🤖 Hermes 자동화 중";
-        banner.setText(state + " · " + title + "\n" + step + " · 남은 " + (left / 60) + "분 " + (left % 60) + "초 · 볼륨↓×3 비상정지");
+        String prog = progress.isEmpty() ? "" : "단계 " + progress + " · ";
+        banner.setText(state + " · " + title + "\n" + prog + step + " · 남은 " + (left / 60) + "분 " + (left % 60) + "초 · 볼륨↓×3 비상정지");
     }
 
     private void removeOverlay() {

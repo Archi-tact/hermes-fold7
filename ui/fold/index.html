@@ -442,8 +442,8 @@ async function connect() {
     ws.onopen = async () => {
       connecting = false; retry = 0; $("conn").className = "dot on";
       try { await call("client.capabilities", { server_requests: true }); } catch (_) {}
-      await loadSessions();
-      if (!S.sid) await newSession(); else await resume(S.sid).catch(() => newSession());
+      const recent = await loadSessions();
+      await openLastChat(recent);
       checkSetup();
     };
   } catch (e) { connecting = false; if (String(e.message) !== "login") setTimeout(connect, 3000); }
@@ -485,8 +485,18 @@ async function resume(id) {
 }
 function emptyNode() { const d = document.createElement("div"); d.className = "empty"; d.id = "empty"; d.innerHTML = `<div class="big">무엇을 도와드릴까요?</div><div>폰 앱 조작, 설정 변경, 검색, 예약 작업까지 — 말로 시키면 됩니다.</div>`; return d; }
 
+// 앱을 열면 항상 '하던 대화'로: ① 이 화면이 기억한 대화 ② 안 되면(저장소가 비었거나 다른 창) 가장 최근 대화
+//   ③ 대화가 하나도 없을 때만 새 대화. (예전엔 ①이 실패하면 바로 새 대화가 만들어졌음)
+async function openLastChat(recent) {
+  const ids = [S.sid, ...(recent || []).map((s) => s.id)].filter(Boolean);
+  for (const id of [...new Set(ids)].slice(0, 3)) {
+    try { await resume(id); const s = (recent || []).find((x) => x.id === id); if (s && s.title) $("title").textContent = s.title; loadSessions(); return; } catch (_) {}
+  }
+  await newSession(); loadSessions();
+}
+
 async function loadSessions() {
-  let r; try { r = await call("session.list", { limit: 30 }); } catch (_) { return; }
+  let r; try { r = await call("session.list", { limit: 30 }); } catch (_) { return []; }
   const list = $("slist"); list.innerHTML = `<div class="slabel">최근 대화</div>`;
   for (const s of (r.sessions || [])) {
     const b = document.createElement("button"); b.className = "sitem" + (s.id === S.sid ? " on" : "");
@@ -495,6 +505,7 @@ async function loadSessions() {
     list.append(b);
     if (s.id === S.sid && s.title) $("title").textContent = s.title;
   }
+  return r.sessions || [];
 }
 
 async function send(text) {

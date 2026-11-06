@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Hermes Hands</string>
+    <string name="chat_name">Hermes</string>
     <string name="service_label">Hermes Hands (에이전트 화면 조작)</string>
     <string name="service_desc">Hermes 에이전트가 승인된 자동화 세션 동안에만 화면 구조를 읽고 앱을 조작합니다. 세션 중에는 화면에 보호막이 씌워져 가운데 일시정지 버튼 외의 터치가 차단됩니다. 은행·결제 앱과 비밀번호 칸은 항상 제외됩니다. 볼륨 아래 버튼 3번 = 비상 정지.</string>
 </resources>

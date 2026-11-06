@@ -23,12 +23,23 @@ install -m 400 "$SRC/rish_shizuku.dex" "$PREFIX/bin/rish_shizuku.dex"
 # rish 는 어떤 앱에서 쓰는지 알아야 함 → Termux
 sed -i 's/^RISH_APPLICATION_ID=.*/RISH_APPLICATION_ID="com.termux"/; s/"PKG"/"com.termux"/' "$PREFIX/bin/rish"
 grep -q 'RISH_APPLICATION_ID="com.termux"' "$PREFIX/bin/rish" || sed -i '1a export RISH_APPLICATION_ID="com.termux"' "$PREFIX/bin/rish"
+# phone 브리지는 SSH 로 실행돼 안드로이드 환경변수(BOOTCLASSPATH 등)가 빠짐 → app_process 가 실패
+# → 지금 Termux 의 값을 rish 안에 기본값으로 넣어 둠 (이미 있으면 그대로 사용)
+{
+  head -1 "$PREFIX/bin/rish"
+  for v in ANDROID_ROOT ANDROID_DATA ANDROID_ART_ROOT ANDROID_I18N_ROOT ANDROID_TZDATA_ROOT BOOTCLASSPATH DEX2OATBOOTCLASSPATH SYSTEMSERVERCLASSPATH; do
+    val="${!v:-}"; [ -n "$val" ] || continue
+    printf '[ -n "${%s:-}" ] || export %s=%q   # hermes-fold7\n' "$v" "$v" "$val"
+  done
+  tail -n +2 "$PREFIX/bin/rish" | grep -v '# hermes-fold7$'
+} > "$PREFIX/bin/rish.tmp" && chmod 700 "$PREFIX/bin/rish.tmp" && mv "$PREFIX/bin/rish.tmp" "$PREFIX/bin/rish"
 echo "Shizuku 권한 요청 창이 뜨면 '항상 허용'을 누르세요…"
 # rish 는 출력을 변수로 받으면 입력(stdin)이 끝나길 기다리며 멈춤 → </dev/null 필수
 out="$(timeout 30 rish -c 'id -u' </dev/null 2>&1 || true)"
 uid="$(printf '%s' "$out" | tail -1 | tr -dc '0-9')"
 if [ "$uid" = 2000 ]; then
   echo "✅ Shizuku 연결됨 — 이제 5G 에서도 phone set 이 동작해요 (재부팅하면 Shizuku 앱에서 '시작'만 다시)"
+  echo "---- Hermes(phone 브리지) 쪽 확인"
   phone adb-status 2>/dev/null || true
 else
   echo "⚠ 아직 연결 안 됨: Shizuku 앱이 '실행 중'인지, Termux 권한을 허용했는지 확인 후 다시 실행"

@@ -24,7 +24,8 @@ install -m 400 "$SRC/rish_shizuku.dex" "$PREFIX/bin/rish_shizuku.dex"
 sed -i 's/^RISH_APPLICATION_ID=.*/RISH_APPLICATION_ID="com.termux"/; s/"PKG"/"com.termux"/' "$PREFIX/bin/rish"
 grep -q 'RISH_APPLICATION_ID="com.termux"' "$PREFIX/bin/rish" || sed -i '1a export RISH_APPLICATION_ID="com.termux"' "$PREFIX/bin/rish"
 echo "Shizuku 권한 요청 창이 뜨면 '항상 허용'을 누르세요…"
-out="$(timeout 30 rish -c 'id -u' 2>&1 || true)"
+# rish 는 출력을 변수로 받으면 입력(stdin)이 끝나길 기다리며 멈춤 → </dev/null 필수
+out="$(timeout 30 rish -c 'id -u' </dev/null 2>&1 || true)"
 uid="$(printf '%s' "$out" | tail -1 | tr -dc '0-9')"
 if [ "$uid" = 2000 ]; then
   echo "✅ Shizuku 연결됨 — 이제 5G 에서도 phone set 이 동작해요 (재부팅하면 Shizuku 앱에서 '시작'만 다시)"

@@ -136,7 +136,8 @@ audit "RUN" "$SUMMARY"
 SHELL_MODE=adb
 rish_ok() {   # Shizuku(rish): 와이파이 한 번 시작 후엔 5G 에서도 셸 권한 사용 (네트워크 포트 없음)
   command -v rish >/dev/null 2>&1 || return 1
-  [ "$(timeout 8 rish -c 'id -u' 2>/dev/null | tr -dc '0-9')" = 2000 ]
+  # rish 는 출력이 화면(터미널)이 아니면 입력(stdin)이 끝나길 기다리며 멈춤 → 항상 </dev/null
+  [ "$(timeout 8 rish -c 'id -u' </dev/null 2>/dev/null | tr -dc '0-9')" = 2000 ]
 }
 adb_ready() {
   if rish_ok; then SHELL_MODE=rish; return 0; fi
@@ -167,8 +168,8 @@ adb_ready() {
 }
 adb_done() { [ "$SHELL_MODE" = adb ] && [ "$ADB_KILL_AFTER" = 1 ] && adb kill-server >/dev/null 2>&1; true; }
 # 셸 권한 명령: Shizuku(rish) 가 있으면 그쪽, 없으면 adb. (값은 호출 전에 검증됨, %q 로 한 번 더 인용)
-A() { if [ "$SHELL_MODE" = rish ]; then rish -c "$(printf '%q ' "$@")"; else adb shell -- "$@"; fi; }
-AX() { if [ "$SHELL_MODE" = rish ]; then rish -c "$(printf '%q ' "$@")"; else adb exec-out "$@"; fi; }   # 바이너리 출력
+A() { if [ "$SHELL_MODE" = rish ]; then rish -c "$(printf '%q ' "$@")" </dev/null; else adb shell -- "$@"; fi; }
+AX() { if [ "$SHELL_MODE" = rish ]; then rish -c "$(printf '%q ' "$@")" </dev/null; else adb exec-out "$@"; fi; }   # 바이너리 출력
 safe_word() { [[ "$1" =~ ^[A-Za-z0-9._:/-]+$ ]] || die "unsafe value: $1"; }
 
 # ---------- 설정 직접 변경 ----------

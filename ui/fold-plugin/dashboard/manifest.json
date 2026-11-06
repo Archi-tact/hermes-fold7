@@ -1,0 +1,10 @@
+{
+  "name": "fold-upload",
+  "label": "Hermes Fold 파일 첨부",
+  "description": "폰 화면(Hermes Fold)에서 첨부한 파일을 작업 폴더(~/work/uploads)에 저장. 로그인한 화면만 사용 가능.",
+  "version": "1.0.0",
+  "icon": "Paperclip",
+  "tab": { "hidden": true },
+  "entry": "dist/index.js",
+  "api": "plugin_api.py"
+}

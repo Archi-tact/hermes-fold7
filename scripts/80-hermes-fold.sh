@@ -38,6 +38,11 @@ WEB_GUEST="$H_GUEST/web"; TOKEN_GUEST="$H_GUEST/desktop.token"
 put_web() {   # ui/fold → Hermes 가 보는 위치
   tar -C "$KIT/ui/fold" -cf - . | G sh -c "rm -rf '$WEB_GUEST' && mkdir -p '$WEB_GUEST' && tar -xf - -C '$WEB_GUEST' && chmod -R go-w '$H_GUEST'"
 }
+# 파일 첨부 플러그인 (POST /api/plugins/fold-upload/upload · 로그인 필요) → Hermes 플러그인 폴더. 서버 재시작 후 적용
+if [ "$MODE" = proot ]; then PLUGIN_GUEST="/root/.hermes/plugins/fold-upload"; else PLUGIN_GUEST="${HERMES_HOME:-$HOME/.hermes}/plugins/fold-upload"; fi
+put_plugin() {
+  tar -C "$KIT/ui/fold-plugin" -cf - . | G sh -c "rm -rf '$PLUGIN_GUEST' && mkdir -p '$PLUGIN_GUEST' && tar -xf - -C '$PLUGIN_GUEST' && chmod -R go-w '$PLUGIN_GUEST'"
+}
 token() { G cat "$TOKEN_GUEST" 2>/dev/null; }
 make_token() {
   token | grep -q . && return 0
@@ -123,6 +128,7 @@ setup() {
   need openssl openssl-tool
   say "화면 파일 설치 → $WEB_GUEST ($MODE)"
   put_web
+  put_plugin
   say "PC Desktop 연결용 토큰"
   make_token
   local ts; ts="$(tailscale_ip || true)"
@@ -204,7 +210,13 @@ status() {
 
 case "${1:-}" in
   setup) setup ;;
-  update) put_web; say "화면 파일 갱신 완료 → 브라우저 새로고침" ;;
+  update) put_web
+          # 파일 첨부 플러그인이 새로 생기거나 바뀌었으면 서버를 다시 켜야 적용됨
+          before="$(G sh -c "cat '$PLUGIN_GUEST/dashboard/plugin_api.py' '$PLUGIN_GUEST/dashboard/manifest.json' 2>/dev/null" | cksum)"
+          put_plugin
+          after="$(G sh -c "cat '$PLUGIN_GUEST/dashboard/plugin_api.py' '$PLUGIN_GUEST/dashboard/manifest.json' 2>/dev/null" | cksum)"
+          if [ "$before" != "$after" ] && running; then say "파일 첨부 기능 설치 → 서버 재시작"; stop >/dev/null; start >/dev/null; fi
+          say "화면 파일 갱신 완료 → 앱 다시 열기(브라우저는 새로고침)" ;;
   notify-setup) notify_setup; say "답변 알림 설정 완료 — 서버 재시작 후 적용"; running && { stop; start; } ;;
   start) start ;;
   stop) stop ;;

@@ -31,10 +31,16 @@ async function waitTurn(page, ms = 240000) {   // 답변이 끝날 때까지 (�
   t.status() === 401 || t.status() === 403 ? ok(`로그인 없이 실시간 연결 티켓 발급 거부 (${t.status()})`) : bad(`티켓 발급 ${t.status()}`);
   const wrong = await ctx.request.post(URL0 + "/auth/password-login", { data: { provider: "basic", username: "fold", password: "wrong-password", next: "/" } });
   wrong.status() === 401 ? ok("틀린 비밀번호 거부 (401)") : bad(`틀린 비밀번호 ${wrong.status()}`);
+  const upAnon = await ctx.request.post(URL0 + "/api/plugins/fold-upload/upload?name=x.txt", { data: Buffer.from("x"), headers: { "Content-Type": "application/octet-stream" } });
+  upAnon.status() === 401 || upAnon.status() === 403 ? ok(`로그인 없이 파일 업로드 거부 (${upAnon.status()})`) : bad(`익명 업로드 ${upAnon.status()}`);
 
   console.log("== 2. 비밀번호 로그인 → Hermes Fold 화면");
   const login = await ctx.request.post(URL0 + "/auth/password-login", { data: { provider: "basic", username: "fold", password: process.env.FOLD_PASSWORD, next: "/" } });
   login.ok() ? ok("비밀번호 로그인") : bad(`로그인 ${login.status()} ${await login.text()}`);
+  const up = await ctx.request.post(URL0 + "/api/plugins/fold-upload/upload?name=" + encodeURIComponent("../메모 1.txt"), { data: Buffer.from("hello fold"), headers: { "Content-Type": "application/octet-stream" } });
+  const upj = await up.json().catch(() => ({}));
+  up.ok() && /\/uploads\/[^/]*메모_1\.txt$/.test(upj.path || "") && upj.size === 10
+    ? ok("파일 첨부 업로드 → 작업 폴더 uploads/ (이름 정리 · 경로 밖으로 못 나감)") : bad(`업로드 ${up.status()} ${JSON.stringify(upj)}`);
   await page.goto(URL0 + "/");
   await page.waitForSelector("#conn.on", { timeout: 60000 }).then(() => ok("실시간 연결 (/api/ws, 1회용 티켓)")).catch(async () => { bad("실시간 연결 안 됨"); });
   await page.waitForTimeout(1500);

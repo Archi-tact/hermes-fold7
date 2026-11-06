@@ -11,6 +11,7 @@ import android.util.Log;
 import android.view.WindowInsets;
 import android.widget.FrameLayout;
 import android.webkit.CookieManager;
+import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
@@ -29,6 +30,22 @@ public class ChatActivity extends Activity {
     static final String HOME = "http://127.0.0.1:9130/";
     private static volatile ChatActivity visible;   // 지금 화면에 보이는 대화창 (화면 분할 실행에 사용)
     private WebView web;
+    private static final int PICK_FILES = 7;
+    private ValueCallback<Uri[]> pendingFiles;
+
+    @Override protected void onActivityResult(int req, int res, Intent data) {
+        super.onActivityResult(req, res, data);
+        if (req != PICK_FILES || pendingFiles == null) return;
+        Uri[] out = null;
+        if (res == RESULT_OK && data != null) {
+            if (data.getClipData() != null) {
+                out = new Uri[data.getClipData().getItemCount()];
+                for (int i = 0; i < out.length; i++) out[i] = data.getClipData().getItemAt(i).getUri();
+            } else if (data.getData() != null) out = new Uri[]{data.getData()};
+        }
+        pendingFiles.onReceiveValue(out);   // 취소하면 null → 화면은 그대로
+        pendingFiles = null;
+    }
 
     static ChatActivity visible() { return visible; }
 
@@ -45,7 +62,19 @@ public class ChatActivity extends Activity {
         s.setAllowContentAccess(false);
         s.setCacheMode(WebSettings.LOAD_NO_CACHE);   // 폰 안 서버라 빠름 · 화면 업데이트(80-hermes-fold.sh update)가 바로 보이게
         CookieManager.getInstance().setAcceptCookie(true);   // 로그인(30일) 유지
-        web.setWebChromeClient(new WebChromeClient());
+        web.setWebChromeClient(new WebChromeClient() {
+            // 📎 파일 첨부: 안드로이드 파일/사진 선택 창을 띄우고 고른 파일을 화면에 돌려줌
+            @Override public boolean onShowFileChooser(WebView v, ValueCallback<Uri[]> cb, FileChooserParams p) {
+                if (pendingFiles != null) pendingFiles.onReceiveValue(null);
+                pendingFiles = cb;
+                Intent it = p.createIntent();
+                it.addCategory(Intent.CATEGORY_OPENABLE);
+                if (p.getMode() == FileChooserParams.MODE_OPEN_MULTIPLE) it.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+                if (it.getType() == null || it.getType().isEmpty()) it.setType("*/*");
+                try { startActivityForResult(Intent.createChooser(it, "첨부할 파일"), PICK_FILES); return true; }
+                catch (Exception e) { pendingFiles = null; Log.w(TAG, "chooser: " + e); return false; }
+            }
+        });
         web.setWebViewClient(new WebViewClient() {
             @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
                 Uri u = r.getUrl();

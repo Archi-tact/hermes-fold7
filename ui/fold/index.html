@@ -121,6 +121,17 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 textarea{flex:1;border:0;outline:0;resize:none;background:none;color:var(--text);font:inherit;max-height:160px;padding:6px 0;min-height:24px}
 .send{width:36px;height:36px;border-radius:11px;background:var(--accent);color:#fff;display:grid;place-items:center;flex:none}
 .send:disabled{opacity:.35}
+.box{padding-left:6px} .attach{width:36px;height:36px;border-radius:11px;flex:none;font-size:18px;color:var(--muted);display:grid;place-items:center}
+.attach:hover{background:var(--sunk)}
+.tray{max-width:760px;margin:0 auto 8px;display:flex;gap:8px;overflow-x:auto;scrollbar-width:none}
+.att{position:relative;flex:none;display:flex;align-items:center;gap:8px;max-width:220px;border:1px solid var(--line);background:var(--panel);border-radius:12px;padding:6px 30px 6px 6px;font-size:12.5px}
+.att img{width:44px;height:44px;object-fit:cover;border-radius:8px;flex:none}
+.att .fi{width:44px;height:44px;border-radius:8px;background:var(--sunk);display:grid;place-items:center;font-size:20px;flex:none}
+.att .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap} .att small{display:block;color:var(--faint)}
+.att.up small{color:var(--accent)} .att.bad small{color:var(--bad)}
+.att .rm{position:absolute;top:4px;right:4px;width:22px;height:22px;border-radius:50%;background:var(--sunk);color:var(--muted);font-size:12px}
+.msg.user .ufiles{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px} .msg.user .ufiles img{max-width:160px;max-height:160px;border-radius:10px;display:block}
+.msg.user .ufiles span{font-size:12.5px;background:rgba(0,0,0,.12);padding:3px 8px;border-radius:8px}
 .send.stop{background:var(--text);color:var(--bg)}
 .chips{max-width:760px;margin:0 auto 8px;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
 .chip{white-space:nowrap;border:1px solid var(--line);border-radius:999px;padding:5px 11px;font-size:13px;color:var(--muted);background:var(--panel)}
@@ -210,7 +221,10 @@ textarea{flex:1;border:0;outline:0;resize:none;background:none;color:var(--text)
     </div></section>
     <footer class="composer">
       <div class="chips" id="chips"></div>
+      <div class="tray" id="tray" hidden></div>
       <div class="box">
+        <button class="attach" id="attachBtn" aria-label="파일 첨부" title="파일 · 사진 첨부">📎</button>
+        <input type="file" id="fileIn" multiple hidden>
         <textarea id="input" rows="1" placeholder="Hermes 에게 부탁하기…" enterkeyhint="send"></textarea>
         <button class="send" id="send" aria-label="보내기">↑</button>
       </div>
@@ -409,8 +423,13 @@ const S = { ws: null, sid: null, rid: 0, pending: new Map(), cur: null, tools: n
 const msgs = $("msgs"), chat = $("chat");
 function scrollDown() { requestAnimationFrame(() => { chat.scrollTop = chat.scrollHeight; }); }
 function hideEmpty() { const e = $("empty"); if (e) e.remove(); }
-function addUser(text) {
+function addUser(text, files) {
   hideEmpty(); const d = document.createElement("div"); d.className = "msg user"; d.textContent = text; msgs.append(d);
+  if (files && files.length) {   // 첨부: 사진은 미리보기, 파일은 이름표
+    const f = document.createElement("div"); f.className = "ufiles";
+    f.innerHTML = files.map((a) => a.img ? `<img src="${a.url}" alt="${esc(a.name)}">` : `<span>${fileIcon(a.name)} ${esc(a.name)}</span>`).join("");
+    d.prepend(f);
+  }
   // 길게 붙여넣은 내 메시지는 접어 두고 '더 보기'
   if (text.length > 360 || text.split("\n").length > 7) {
     d.classList.add("long"); const b = document.createElement("button"); b.className = "morebtn"; b.textContent = "더 보기 ▾";
@@ -663,18 +682,86 @@ async function loadSessions() {
   return r.sessions || [];
 }
 
+/* ───────────── 파일 첨부 ─────────────
+   📎 / 붙여넣기(Ctrl+V 사진) → 바로 서버 작업 폴더(~/work/uploads)로 업로드(로그인 필요) → 보낼 때
+   사진은 모델에 이미지로(image.attach), 그 밖의 파일은 경로를 알려 줘서 Hermes 가 직접 읽게 함 */
+const ATT = [];
+const IMG_RE = /\.(png|jpe?g|webp|gif|bmp)$/i;
+const fmtSize = (n) => n < 1024 ? n + "B" : n < 1048576 ? (n / 1024).toFixed(0) + "KB" : (n / 1048576).toFixed(1) + "MB";
+const fileIcon = (n) => /\.pdf$/i.test(n) ? "📕" : /\.(xlsx?|csv)$/i.test(n) ? "📊" : /\.(docx?|hwpx?|txt|md)$/i.test(n) ? "📄" : /\.(zip|7z|tar|gz)$/i.test(n) ? "🗜️" : /\.(mp3|m4a|wav)$/i.test(n) ? "🎵" : /\.(mp4|mov|webm)$/i.test(n) ? "🎬" : "📎";
+function addFiles(files) {
+  for (const f of files) {
+    if (ATT.length >= 10) break;
+    const a = { id: Math.random().toString(36).slice(2), file: f, name: f.name || "image.png", size: f.size, img: (f.type || "").startsWith("image/") && IMG_RE.test(f.name || "x.png"), status: "up" };
+    if (a.img) a.url = URL.createObjectURL(f);
+    if (f.size > 25 * 1048576) { a.status = "bad"; a.err = "25MB 초과"; }
+    else a.p = uploadFile(a);
+    ATT.push(a);
+  }
+  renderTray();
+}
+async function uploadFile(a) {
+  try {
+    if (DEMO) { await new Promise((r) => setTimeout(r, 400)); a.path = "/root/work/uploads/demo_" + a.name; }
+    else {
+      const r = await fetch("/api/plugins/fold-upload/upload?name=" + encodeURIComponent(a.name), { method: "POST", credentials: "include", headers: { "Content-Type": "application/octet-stream" }, body: a.file });
+      if (r.status === 401) { location.href = "/auth/login?next=/"; throw new Error("login"); }
+      if (r.status === 404) throw new Error("첨부 기능 미설치 (80-hermes-fold.sh update)");
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.path) throw new Error(j.detail || "업로드 실패 " + r.status);
+      a.path = j.path;
+    }
+    a.status = "ok";
+  } catch (e) { a.status = "bad"; a.err = e.message; }
+  renderTray();
+}
+function renderTray() {
+  const t = $("tray"); t.hidden = !ATT.length;
+  t.innerHTML = ATT.map((a) => `<div class="att ${a.status}" data-id="${a.id}">${a.img ? `<img src="${a.url}" alt="">` : `<span class="fi">${fileIcon(a.name)}</span>`}<div style="min-width:0"><div class="nm">${esc(a.name)}</div><small>${a.status === "up" ? "올리는 중…" : a.status === "bad" ? "✕ " + esc(a.err || "실패") : fmtSize(a.size) + " · 준비됨"}</small></div><button class="rm" data-rm="${a.id}" aria-label="빼기">✕</button></div>`).join("");
+  autosize();
+}
+$("tray").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-rm]"); if (!b) return;
+  const i = ATT.findIndex((a) => a.id === b.dataset.rm); if (i < 0) return;
+  if (ATT[i].url) URL.revokeObjectURL(ATT[i].url);
+  ATT.splice(i, 1); renderTray();
+});
+$("attachBtn").onclick = () => $("fileIn").click();
+$("fileIn").onchange = (e) => { addFiles([...e.target.files]); e.target.value = ""; };
+document.addEventListener("paste", (e) => {   // 사진 붙여넣기
+  const fs = [...(e.clipboardData && e.clipboardData.files || [])]; if (fs.length) { e.preventDefault(); addFiles(fs); }
+});
+
 async function send(text) {
-  text = (text ?? $("input").value).trim(); if (!text) return;
+  const typed = text == null;
+  text = (text ?? $("input").value).trim();
+  const files = typed ? ATT.slice() : [];
+  if (!text && !files.length) return;
   if (S.busy) return;
-  $("input").value = ""; autosize(); addUser(text); setBusy(true); S.lastPrompt = text;
-  try { if (!S.sid) await newSession(); hideEmpty(); await call("prompt.submit", { session_id: S.sid, text }); }
+  if (files.some((a) => a.status === "up")) { $("send").disabled = true; await Promise.all(files.map((a) => a.p)); }
+  const ready = files.filter((a) => a.status === "ok");
+  if (typed) { ATT.length = 0; renderTray(); }
+  $("input").value = ""; autosize();
+  addUser(text || "(첨부)", ready); setBusy(true); S.lastPrompt = ready.length ? null : text;
+  try {
+    if (!S.sid) await newSession(); hideEmpty();
+    const notes = [];
+    for (const a of ready) {
+      let asImage = false;
+      if (a.img) { try { const r = await call("image.attach", { session_id: S.sid, path: a.path }); asImage = !!(r && r.attached !== false); } catch (_) {} }
+      if (!asImage) notes.push(`[첨부 파일: ${a.path}]`);
+    }
+    let body = text || (ready.length ? "첨부한 파일을 확인해 줘." : "");
+    if (notes.length) body += "\n\n" + notes.join("\n") + "\n(위 경로의 파일을 직접 읽어서 확인해 줘)";
+    await call("prompt.submit", { session_id: S.sid, text: body });
+  }
   catch (e) { aiDelta("⚠️ 보내지 못했어요: " + e.message); aiSeal(); setBusy(false); }
 }
 async function stop() { S.lastPrompt = null; try { await call("session.interrupt", { session_id: S.sid }); } catch (_) {} setBusy(false); }
 
 /* ───────────── UI 연결 ───────────── */
 const input = $("input");
-function autosize() { input.style.height = "auto"; input.style.height = Math.min(160, input.scrollHeight) + "px"; $("send").disabled = !S.busy && !input.value.trim(); }
+function autosize() { input.style.height = "auto"; input.style.height = Math.min(160, input.scrollHeight) + "px"; $("send").disabled = !S.busy && !input.value.trim() && !ATT.some((a) => a.status !== "bad"); }
 input.addEventListener("input", autosize);
 input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing && matchMedia("(min-width:700px)").matches) { e.preventDefault(); send(); } });
 $("send").onclick = () => (S.busy ? stop() : send());

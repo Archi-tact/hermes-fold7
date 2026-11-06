@@ -3,9 +3,13 @@ package ai.hermesfold7.hands;
 import android.app.Activity;
 import android.content.Intent;
 import android.graphics.Color;
+import android.graphics.Insets;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.WindowInsets;
+import android.widget.FrameLayout;
 import android.webkit.CookieManager;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
@@ -52,7 +56,23 @@ public class ChatActivity extends Activity {
                 if (r.isForMainFrame()) showOffline();
             }
         });
-        setContentView(web);
+        // Android 15(targetSdk 35)는 앱을 화면 끝까지 그림 → 펼친 폴드의 아래 작업 표시줄·내비 바·키보드에 입력창이 가려짐
+        //   → 시스템 바 · 화면 구멍 · 키보드 높이만큼 여백을 줘서 항상 보이게
+        FrameLayout root = new FrameLayout(this);
+        root.setBackgroundColor(Color.parseColor("#1b1a18"));
+        root.addView(web, new FrameLayout.LayoutParams(-1, -1));
+        root.setOnApplyWindowInsetsListener((v, in) -> {
+            int l, t, r, b;
+            if (Build.VERSION.SDK_INT >= 30) {
+                Insets s = in.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout() | WindowInsets.Type.ime());
+                l = s.left; t = s.top; r = s.right; b = s.bottom;
+            } else {
+                l = in.getSystemWindowInsetLeft(); t = in.getSystemWindowInsetTop(); r = in.getSystemWindowInsetRight(); b = in.getSystemWindowInsetBottom();
+            }
+            v.setPadding(l, t, r, b);
+            return in;
+        });
+        setContentView(root);
         if (b != null) web.restoreState(b);
         if (web.getUrl() == null) web.loadUrl(HOME);
     }

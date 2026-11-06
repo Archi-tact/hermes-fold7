@@ -538,6 +538,9 @@ autosize(); renderHands();
 
 /* ───────────── 모델 · API 키 (처음 실행 시 자동 표시) ───────────── */
 const PROVIDERS = [
+  // ChatGPT 구독(Plus/Pro) — API 키 대신 로그인. 로그인은 Termux 에서 한 번: hermes-proot model → OpenAI Codex
+  { id: "openai-codex", name: "ChatGPT 구독", tag: "키 불필요", env: null, oauth: true, ph: "키 필요 없음 (ChatGPT 로그인)", url: "https://chatgpt.com",
+    help: "Termux 에서 한 번만: hermes-proot model → 'OpenAI Codex' → 링크 열어 ChatGPT 로그인 → 코드 입력. 그 뒤엔 여기서 모델만 고르면 돼요", models: ["gpt-6.1-sol", "gpt-6.1-terra", "gpt-6-astra", "gpt-6-luna"] },
   { id: "nvidia", name: "NVIDIA", tag: "무료 · 추천", env: "NVIDIA_API_KEY", ph: "nvapi-…", url: "https://build.nvidia.com",
     help: "build.nvidia.com 로그인 → 아무 모델 → 'Get API Key' 에서 무료 키 발급", models: ["nvidia/nemotron-3-ultra-550b-a55b", "nvidia/nemotron-3-super-120b-a12b", "nvidia/nemotron-3.5-super-vl-120b-a12b", "moonshotai/kimi-k2.6", "z-ai/glm-5.3"] },
   { id: "deepseek", name: "DeepSeek", tag: "저렴 · 빠름", env: "DEEPSEEK_API_KEY", ph: "sk-…", url: "https://platform.deepseek.com/api_keys",
@@ -562,8 +565,9 @@ async function api(path, opts = {}) {
 function renderProviders() {
   $("provs").innerHTML = PROVIDERS.map((p) => `<button class="prov${p === pick ? " on" : ""}" data-id="${p.id}"><b>${p.name}</b><small>${p.tag}</small></button>`).join("");
   $("provs").querySelectorAll(".prov").forEach((b) => b.onclick = () => { pick = PROVIDERS.find((p) => p.id === b.dataset.id); renderProviders(); });
-  $("keyLabel").textContent = `${pick.name} API 키`;
+  $("keyLabel").textContent = pick.oauth ? `${pick.name} — API 키 대신 로그인` : `${pick.name} API 키`;
   $("apiKey").placeholder = pick.ph;
+  $("apiKey").disabled = !!pick.oauth; if (pick.oauth) $("apiKey").value = "";
   $("modelList").innerHTML = pick.models.map((m) => `<option value="${esc(m)}">`).join("");
   if (!pick.models.includes($("modelName").value) || !$("modelName").value) $("modelName").value = pick.models[0] || "";
   $("modelName").placeholder = pick.models[0] || "예: anthropic/claude-sonnet-5";
@@ -581,7 +585,8 @@ async function saveSetup() {
   if (!model) { m.textContent = "모델 이름을 넣어 주세요"; m.className = "msgline bad"; return; }
   $("setupSave").disabled = true; m.className = "msgline"; m.textContent = "저장하는 중…";
   try {
-    if (key) await api("/api/env", { method: "PUT", body: JSON.stringify({ key: pick.env, value: key }) });
+    if (pick.oauth) { /* 로그인 방식: 키 저장 없음 (Termux 에서 로그인한 계정 사용) */ }
+    else if (key) await api("/api/env", { method: "PUT", body: JSON.stringify({ key: pick.env, value: key }) });
     else {
       const env = await api("/api/env");
       if (!(env[pick.env] && env[pick.env].is_set)) throw new Error(`${pick.name} API 키를 넣어 주세요`);
@@ -601,8 +606,9 @@ async function checkSetup() {
     if (info && info.model) $("model").textContent = info.model;
     const cur = PROVIDERS.find((p) => p.id === (info && info.provider));
     if (cur) pick = cur;
-    const anyKey = PROVIDERS.some((p) => env[p.env] && env[p.env].is_set);
-    const curKey = cur ? env[cur.env] && env[cur.env].is_set : anyKey;
+    const anyKey = PROVIDERS.some((p) => p.env && env[p.env] && env[p.env].is_set);
+    // 로그인 방식(ChatGPT 구독)이거나 목록에 없는 공급자(Termux 에서 직접 설정)면 키 검사 안 함
+    const curKey = cur ? (cur.oauth || (env[cur.env] && env[cur.env].is_set)) : (info && info.provider ? true : anyKey);
     if (!info || !info.model || !curKey) openSetup(true);
   } catch (e) { if (String(e.message) !== "login") console.warn("setup check", e); }
 }

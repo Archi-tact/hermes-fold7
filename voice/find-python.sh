@@ -5,6 +5,7 @@ HH="${HERMES_HOME:-$HOME/.hermes}"
 PY=""
 _cands=""
 for _p in $(pgrep -f "hermes" 2>/dev/null); do
+  tr '\0' ' ' < "/proc/$_p/cmdline" 2>/dev/null | grep -q voice_relay && continue   # 이 중계 서버 자신은 제외
   _a="$(tr '\0' '\n' < "/proc/$_p/cmdline" 2>/dev/null | head -1)"
   case "$_a" in */python*) [ -z "$PY" ] && [ -x "$_a" ] && PY="$_a" ;; esac   # 지금 Hermes 를 돌리는 파이썬이 정답
 done

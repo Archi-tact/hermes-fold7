@@ -83,6 +83,8 @@ jobs:
           check '[ "$(pgrep -fc "gateway run")" -le 2 ] && [ "$(pgrep -fc hermes_voice_relay.py)" -le 2 ]' "다시 실행해도 서버 중복 없음"
           bash scripts/90-hermes-voice.sh status
           ss -ltn | grep -E ':(8787|8642)\b'
+      - name: 고품질 음성(Edge) 설치 — Hermes 의 uv venv 에는 pip 이 없음
+        run: bash scripts/90-hermes-voice.sh edge | tee "$RUNNER_TEMP/edge.log" && grep -q "Edge 음성 준비" "$RUNNER_TEMP/edge.log"
       - name: 음성 종단 테스트 (앱과 같은 요청 → 실제 Hermes → 실제 모델)
         timeout-minutes: 20
         run: python3 lab/voice/voice-e2e.py "$HOME/.hermes-voice-srv/relay_token" | tee "$RUNNER_TEMP/e2e.txt"

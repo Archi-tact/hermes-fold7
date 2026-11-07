@@ -73,6 +73,10 @@ for port, name in ((8787, "음성 중계 서버"), (8642, "Hermes API 서버")):
 s, _ = post("/v1/voice-approvals", {"requestId": str(uuid.uuid4()), "approvalId": "run_fake", "approve": True})
 ok(s == 404, "요청하지 않은 승인은 거부 (%s)" % s)
 
+# 고품질 음성(Edge) — 앱의 '고품질 음성' 이 받는 것과 같은 MP3
+s, audio = post("/v1/tts", {"text": "안녕하세요. 헤르메스 음성입니다.", "voice": "ko-KR-SunHiNeural"}, timeout=60)
+ok(s == 200 and len(audio) > 2000 and (audio[:3] == b"ID3" or audio[0] == 0xFF), "고품질 음성(Edge) MP3 생성 (%s, %d바이트)" % (s, len(audio)))
+
 if os.environ.get("HAS_KEY") != "1":
     print("   (NVIDIA_API_KEY 없음 → 실제 모델 대화 검사 생략)")
 else:

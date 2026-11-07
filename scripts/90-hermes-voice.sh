@@ -35,7 +35,7 @@ guest_sh() { G /bin/sh -s; }
 say() { printf '\033[1;36m[voice]\033[0m %s\n' "$*"; }
 
 put_relay() {
-  tar -C "$KIT/voice" -cf - hermes_voice_relay.py | G sh -c "mkdir -p '$V_GUEST' && chmod 700 '$V_GUEST' && tar -xf - -C '$V_GUEST'"
+  tar -C "$KIT/voice" -cf - hermes_voice_relay.py find-python.sh | G sh -c "mkdir -p '$V_GUEST' && chmod 700 '$V_GUEST' && tar -xf - -C '$V_GUEST'"
 }
 
 # ~/.hermes/.env 에 API 서버 설정 (이미 있으면 키는 그대로 둠). 키·토큰은 화면/로그에 출력하지 않음.
@@ -85,10 +85,7 @@ start_relay() {
   say "음성 중계 서버 시작 (127.0.0.1:$RELAY_PORT)"
   # Hermes 의 파이썬(edge-tts 포함)을 우선 사용, 없으면 python3. .env 의 API_SERVER_KEY 를 환경으로만 넘김
   sed -e "s#__HH__#$HH#g" -e "s#__VG__#$V_GUEST#g" -e "s#__RP__#$RELAY_PORT#g" -e "s#__AP__#$API_PORT#g" > "$STATE/run-relay.sh" <<'__RUN__'
-PY=python3
-for c in "__HH__/hermes-agent/venv/bin/python" "__HH__/hermes-agent/.venv/bin/python" "__HH__/bin/hermes-python"; do
-  [ -x "$c" ] && { PY="$c"; break; }
-done
+. "__VG__/find-python.sh"
 API_SERVER_KEY="$(grep '^API_SERVER_KEY=' "__HH__/.env" | tail -1 | cut -d= -f2-)"
 export API_SERVER_KEY
 export HERMES_API_URL="http://127.0.0.1:__AP__" RELAY_HOST=127.0.0.1 RELAY_PORT=__RP__ RELAY_TOKEN_FILE="__VG__/relay_token"
@@ -156,7 +153,19 @@ EOF
   pair) pair ;;
   update) put_relay; install_boot; if relay_running; then stop_relay; start_relay; fi; say "음성 중계 서버 갱신 완료" ;;
   edge)
-    printf 'for c in %s/hermes-agent/venv/bin/python %s/hermes-agent/.venv/bin/python; do [ -x "$c" ] && { "$c" -m pip install -q edge-tts && echo OK; exit 0; }; done\npython3 -m pip install -q --user --break-system-packages edge-tts && echo OK\n' "$HH" "$HH" | guest_sh
+    put_relay
+    say "고품질 음성용 edge-tts 설치 (Hermes 파이썬에)"
+    sed "s#__VG__#$V_GUEST#g" <<'__EDGE__' | guest_sh || { echo "❌ edge-tts 설치 실패 (위 메시지를 캡처해 주세요)"; exit 1; }
+. "__VG__/find-python.sh"
+"$PY" -c 'import edge_tts' 2>/dev/null && { echo "이미 설치됨 ($PY)"; exit 0; }
+# Hermes 는 uv 로 만든 venv 라 pip 이 없음 → uv 우선, 다음 pip, 마지막으로 ensurepip
+UV="$(command -v uv 2>/dev/null || true)"
+if [ -n "$UV" ] && "$UV" pip install -q --python "$PY" edge-tts; then :
+elif "$PY" -m pip install -q edge-tts 2>/dev/null; then :
+elif "$PY" -m ensurepip >/dev/null 2>&1 && "$PY" -m pip install -q edge-tts; then :
+else exit 1; fi
+"$PY" -c 'import edge_tts' && echo "설치 완료 ($PY)"
+__EDGE__
     stop_relay; start_relay
     say "Edge 음성 준비 → 앱 메뉴 '고품질 음성(Edge) 사용'" ;;
   *) sed -n '2,10p' "$0"; exit 1 ;;

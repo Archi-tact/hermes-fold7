@@ -1,0 +1,10 @@
+#!/data/data/com.termux/files/usr/bin/sh
+# Termux:Boot → ~/.termux/boot/30-voice (scripts/90-hermes-voice.sh setup 이 설치)
+# 부팅 후 헤르메스 음성: Hermes API 서버(게이트웨이) + 음성 중계 서버 시작 → 측면 버튼으로 바로 말하기
+LOG_DIR="$HOME/.hermes-bridge/logs"; mkdir -p "$LOG_DIR"
+[ -x "$HOME/hermes-fold7/scripts/90-hermes-voice.sh" ] || exit 0
+(
+  sleep 20   # 10-hermes(sshd·Fold 서버·게이트웨이)가 먼저 뜨도록
+  bash "$HOME/hermes-fold7/scripts/90-hermes-voice.sh" start >> "$LOG_DIR/voice.log" 2>&1 || \
+    termux-notification --id hermes-voice-off --title "헤르메스 음성" --content "음성 서버 시작 실패 · Termux: bash scripts/90-hermes-voice.sh start"
+) &

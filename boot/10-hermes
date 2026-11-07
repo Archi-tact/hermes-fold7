@@ -23,6 +23,7 @@ fi
 
 # 게이트웨이는 사용자가 명시적으로 켰을 때만 (touch ~/.hermes-bridge/gateway.enabled)
 [ -f "$HOME/.hermes-bridge/gateway.enabled" ] || exit 0
+pgrep -f "gateway run" >/dev/null 2>&1 && exit 0   # 이미 실행 중(헤르메스 음성이 띄움)이면 중복 실행 안 함
 
 if [ "$MODE" = proot ]; then
   nohup hermes-proot gateway run >> "$LOG_DIR/gateway.log" 2>&1 &

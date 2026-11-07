@@ -4,7 +4,7 @@ name: hands
 on:
   workflow_dispatch:
   push:
-    paths: ["android/**", "bridge/**", "skills/fold7-hands/**", "lab/redroid/**", ".github/workflows/hands.yml"]
+    paths: ["android/hands/**", "bridge/**", "skills/fold7-hands/**", "lab/redroid/**", ".github/workflows/hands.yml"]
 
 permissions:
   contents: read

@@ -1,0 +1,115 @@
+# 헤르메스 음성 — 측면 버튼 음성 앱: APK 빌드 + 폰 안 중계 서버를 실제 Hermes API 서버·실제 모델(NVIDIA)로 종단 테스트
+#   폰 설치: Releases → voice-latest → hermes-voice.apk
+name: voice
+on:
+  workflow_dispatch:
+  push:
+    paths: ["android/voice/**", "voice/**", "scripts/90-hermes-voice.sh", "boot/30-voice", "lab/voice/**", ".github/workflows/voice.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "17" }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: "8.10.2" }
+      - name: 서명 키 (Hermes Hands 와 같은 키 · Secrets 의 HANDS_SIGNING_PASS)
+        env:
+          PASS: ${{ secrets.HANDS_SIGNING_PASS }}
+        run: |
+          ENC=android/hands/signing/hands.jks.enc
+          if [ -z "$PASS" ] || [ ! -f "$ENC" ]; then echo "::warning::서명 키 없음 → 임시 키 서명"; exit 0; fi
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -in "$ENC" -out "$RUNNER_TEMP/hands.jks" -pass env:PASS
+          echo "HANDS_KEYSTORE=$RUNNER_TEMP/hands.jks" >> "$GITHUB_ENV"
+      - name: 단위 테스트 + APK 빌드
+        env:
+          HANDS_KEYSTORE_PASSWORD: ${{ secrets.HANDS_SIGNING_PASS }}
+        run: gradle -p android/voice --no-daemon :app:testDebugUnitTest :app:assembleRelease
+      - name: 결과 정리
+        run: |
+          cp android/voice/app/build/outputs/apk/release/app-release.apk hermes-voice.apk
+          sha256sum hermes-voice.apk | tee hermes-voice.apk.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hermes-voice-apk
+          path: |
+            hermes-voice.apk
+            hermes-voice.apk.sha256
+
+  e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+      NVIDIA_MODEL: nvidia/nemotron-3-ultra-550b-a55b
+      HERMES_MODE: apt
+    steps:
+      - uses: actions/checkout@v4
+      - name: 중계 서버 단위 테스트
+        run: cd voice && python3 -m unittest test_hermes_voice_relay
+      - name: Hermes 설치 (공식 install.sh)
+        run: |
+          curl -fsSL https://hermes-agent.nousresearch.com/install.sh -o "$RUNNER_TEMP/install.sh"
+          bash "$RUNNER_TEMP/install.sh" --non-interactive --skip-browser --skip-computer-use
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: 모델 · 승인 모드 (폰과 같은 manual)
+        run: |
+          hermes --version
+          hermes config set approvals.mode manual
+          hermes config set model.provider nvidia
+          hermes config set model.default "$NVIDIA_MODEL"
+          if [ -n "$NVIDIA_API_KEY" ]; then hermes config set NVIDIA_API_KEY "$NVIDIA_API_KEY" >/dev/null; echo "HAS_KEY=1" >> "$GITHUB_ENV"; else echo "HAS_KEY=0" >> "$GITHUB_ENV"; fi
+      - name: 헤르메스 음성 설치 + 시작 (scripts/90-hermes-voice.sh)
+        shell: bash
+        run: |
+          bash scripts/90-hermes-voice.sh setup | tee "$RUNNER_TEMP/setup.log"
+          grep -q "준비됨" "$RUNNER_TEMP/setup.log"
+          # 키·토큰이 출력에 안 나왔는지
+          KEY="$(grep '^API_SERVER_KEY=' "$HOME/.hermes/.env" | cut -d= -f2-)"; TOK="$(cat "$HOME/.hermes-voice-srv/relay_token")"
+          echo "::add-mask::$KEY"; echo "::add-mask::$TOK"
+          check() { if eval "$1"; then echo "OK   $2"; else echo "FAIL $2"; exit 1; fi; }
+          check '[ -n "$KEY" ] && [ -n "$TOK" ]' "API 서버 키·페어링 토큰 생성"
+          check '! grep -qF "$KEY" "$RUNNER_TEMP/setup.log" && ! grep -qF "$TOK" "$RUNNER_TEMP/setup.log"' "키·토큰이 화면에 안 나옴"
+          check '[ "$(stat -c %a "$HOME/.hermes-voice-srv/relay_token")" = 600 ] && [ "$(stat -c %a "$HOME/.hermes/.env")" = 600 ]' "토큰·.env 권한 600"
+          # 다시 실행해도 키·토큰이 바뀌지 않고 서버가 중복으로 뜨지 않음
+          bash scripts/90-hermes-voice.sh start
+          check '[ "$KEY" = "$(grep "^API_SERVER_KEY=" "$HOME/.hermes/.env" | cut -d= -f2-)" ] && [ "$TOK" = "$(cat "$HOME/.hermes-voice-srv/relay_token")" ]' "재실행해도 키·토큰 유지"
+          check '[ "$(pgrep -fc "gateway run")" -le 2 ] && [ "$(pgrep -fc hermes_voice_relay.py)" -le 2 ]' "다시 실행해도 서버 중복 없음"
+          bash scripts/90-hermes-voice.sh status
+          ss -ltn | grep -E ':(8787|8642)\b'
+      - name: 음성 종단 테스트 (앱과 같은 요청 → 실제 Hermes → 실제 모델)
+        timeout-minutes: 20
+        run: python3 lab/voice/voice-e2e.py "$HOME/.hermes-voice-srv/relay_token" | tee "$RUNNER_TEMP/e2e.txt"
+      - name: 결과 요약
+        if: always()
+        run: |
+          { echo "## 🎙 헤르메스 음성 (실제 Hermes + NVIDIA)"; echo '```'; cat "$RUNNER_TEMP/e2e.txt" 2>/dev/null; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: 서버 로그 (실패 시 · 대화 내용은 기록 안 됨)
+        if: failure()
+        run: |
+          tail -60 "$HOME/.hermes-voice/gateway.log" || true
+          tail -40 "$HOME/.hermes-voice/relay.log" || true
+
+  release:
+    needs: [build, e2e]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: hermes-voice-apk }
+      - name: 폰 설치용 APK 릴리스 (voice-latest)
+        run: |
+          gh release delete voice-latest -y --cleanup-tag -R "$GITHUB_REPOSITORY" 2>/dev/null || true
+          gh release create voice-latest hermes-voice.apk hermes-voice.apk.sha256 -R "$GITHUB_REPOSITORY" \
+            --title "헤르메스 음성 (최신 테스트 통과 빌드)" --prerelease \
+            --notes "실제 Hermes 종단 테스트를 통과한 빌드입니다. 폰에서 hermes-voice.apk 설치 → Termux: bash scripts/90-hermes-voice.sh setup (커밋 ${GITHUB_SHA::7})"

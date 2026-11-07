@@ -85,7 +85,7 @@ start_relay() {
   say "음성 중계 서버 시작 (127.0.0.1:$RELAY_PORT)"
   # Hermes 의 파이썬(edge-tts 포함)을 우선 사용, 없으면 python3. .env 의 API_SERVER_KEY 를 환경으로만 넘김
   sed -e "s#__HH__#$HH#g" -e "s#__VG__#$V_GUEST#g" -e "s#__RP__#$RELAY_PORT#g" -e "s#__AP__#$API_PORT#g" > "$STATE/run-relay.sh" <<'__RUN__'
-VOICE_DEBUG=1 . "__VG__/find-python.sh"
+. "__VG__/find-python.sh"
 API_SERVER_KEY="$(grep '^API_SERVER_KEY=' "__HH__/.env" | tail -1 | cut -d= -f2-)"
 export API_SERVER_KEY
 export HERMES_API_URL="http://127.0.0.1:__AP__" RELAY_HOST=127.0.0.1 RELAY_PORT=__RP__ RELAY_TOKEN_FILE="__VG__/relay_token"
@@ -156,7 +156,7 @@ EOF
     put_relay
     say "고품질 음성용 edge-tts 설치 (Hermes 파이썬에)"
     sed "s#__VG__#$V_GUEST#g" <<'__EDGE__' | guest_sh || { echo "❌ edge-tts 설치 실패 (위 메시지를 캡처해 주세요)"; exit 1; }
-VOICE_DEBUG=1 . "__VG__/find-python.sh"
+. "__VG__/find-python.sh"
 "$PY" -c 'import edge_tts' 2>/dev/null && { echo "이미 설치됨 ($PY)"; exit 0; }
 # Hermes 는 uv 로 만든 venv 라 pip 이 없음 → uv 우선, 다음 pip, 마지막으로 ensurepip
 UV="$(command -v uv 2>/dev/null || true)"

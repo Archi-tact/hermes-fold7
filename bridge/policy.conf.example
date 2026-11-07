@@ -32,6 +32,8 @@ adb-key=confirm
 adb-shell=deny
 
 # Hermes Hands (화면 조작 앱): 세션 시작만 확인창, 세션 안 동작은 앱이 허용 앱·시간·보호막으로 통제
+# hands-start=allow 로 바꾸면 화면 조작 시작을 묻지 않음. 은행·증권·인증 앱은 정책과 상관없이 항상 거부
+#   (더 막을 앱: ~/.hermes-bridge/hands-deny.conf 에 패키지 이름 한 줄씩)
 hands-start=confirm
 hands-dump=allow
 hands-click=allow

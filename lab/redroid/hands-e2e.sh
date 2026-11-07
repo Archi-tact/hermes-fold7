@@ -55,6 +55,8 @@ S="$(ph ap2 hands-open com.android.settings)"; sleep 1
 [ "$(jqv .ok "$S")" = true ] && [[ "$(focus)" == *com.android.settings* ]] && ok "앱 바로 열기 (hands-open)" || { bad "앱 열기"; echo "$S"; }
 S="$(ph ap3 hands-open com.kbstar.kbbank)"
 [[ "$S" == *"denied package"* ]] && ok "금지 앱(은행)은 열기도 거부" || { bad "금지 앱 열기 거부"; echo "$S"; }
+S="$(ph ap4 hands-open com.kebhana.hanapush)"
+[[ "$S" == *"denied package"* ]] && ok "금지 앱(하나원큐 · 이름에 bank 없음)도 거부" || { bad "하나원큐 거부"; echo "$S"; }
 AS input keyevent KEYCODE_HOME
 
 echo "== 2. 세션 없이는 거부"

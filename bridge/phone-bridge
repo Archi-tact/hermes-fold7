@@ -112,7 +112,26 @@ hands() {  # hands <cmd> [jq 인자들로 만든 추가 필드 JSON]
   printf '%s\n' "$line"
 }
 
-# Hermes Hands: 금지 앱이면 확인창을 띄우기 전에 바로 거부
+# Hermes Hands: 금지 앱(은행·증권·인증 — 디버깅 중이면 실행도 안 되는 앱들) + 내가 추가한 앱은 앱에 묻기 전에 바로 거부
+#   추가: ~/.hermes-bridge/hands-deny.conf 에 패키지 이름(일부만 써도 됨)을 한 줄에 하나씩
+HANDS_DENY_BUILTIN="bank pay wallet card spay samsungpass kbstar toss shinhan kakaobank upbit bithumb authenticator otp passkey kebhana hanaw ibk suhyup kjbank jbbank busanbank dgb bnk smg. epost kfcc cu.co kiwoom miraeasset truefriend samsungpop wooriwm nhqv nhsec daishin ebest kbsec shinhansec tauth ktauth smartotp mobileid yessign crosscert signkorea minwon"
+hands_denied() {  # hands_denied pkg[,pkg..] → 0 이면 금지
+  local p d list="$HANDS_DENY_BUILTIN"
+  [ -f "$BRIDGE_HOME/hands-deny.conf" ] && list+=" $(grep -v '^[[:space:]]*#' "$BRIDGE_HOME/hands-deny.conf" | tr -s '[:space:]' ' ')"
+  for p in ${1//,/ }; do
+    p="${p,,}"
+    for d in $list; do [ -n "$d" ] && [[ "$p" == *"${d,,}"* ]] && return 0; done
+  done
+  return 1
+}
+case "$ACTION" in
+  hands-start) [ -n "${ARGS[1]:-}" ] && hands_denied "${ARGS[1]}" && { audit "REFUSED" "$ACTION ${ARGS[1]}"; printf '{"ok":false,"error":"denied package (은행·인증 등 금지 앱)"}
+'; exit 1; } ;;
+  hands-open)  [ -n "${ARGS[0]:-}" ] && hands_denied "${ARGS[0]}" && { audit "REFUSED" "$ACTION ${ARGS[0]}"; printf '{"ok":false,"error":"denied package (은행·인증 등 금지 앱)"}
+'; exit 1; } ;;
+esac
+
+# Hermes Hands: 금지 앱이면 확인창을 띄우기 전에 바로 거부 (앱 쪽 목록으로 한 번 더)
 if [ "$ACTION" = hands-start ] && [ -n "${ARGS[1]:-}" ]; then
   chk="$(hands check "$(jq -cn --arg a "${ARGS[1]}" '{apps:($a|split(","))}')")"
   [ "$(jq -r '.ok' <<<"$chk" 2>/dev/null)" = true ] || { audit "REFUSED" "$ACTION ${ARGS[1]}"; printf '%s\n' "$chk"; exit 1; }

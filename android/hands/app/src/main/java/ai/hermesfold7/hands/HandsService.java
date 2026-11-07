@@ -76,7 +76,12 @@ public class HandsService extends AccessibilityService {
     static final String[] DENY_SUBSTRINGS = {
             "bank", "pay", "wallet", "card", "spay", "samsungpass", "kbstar", "toss",
             "shinhan", "wooribank", "hanabank", "nhbank", "kakaobank", "upbit", "bithumb",
-            "authenticator", "otp", "passkey", "keystore", "lastpass", "1password", "bitwarden"
+            "authenticator", "otp", "passkey", "keystore", "lastpass", "1password", "bitwarden",
+            // 국내 은행·증권·인증 (패키지 이름에 bank 가 없는 것들 — 대부분 디버깅 중이면 실행도 거부)
+            "kebhana", "hanaw", "ibk", "suhyup", "kjbank", "jbbank", "busanbank", "dgb", "bnk", "smg.",
+            "epost", "kfcc", "cu.co", "kiwoom", "miraeasset", "truefriend", "samsungpop", "wooriwm",
+            "nhqv", "nhsec", "daishin", "ebest", "kbsec", "shinhansec", "kakaopay", "naverpay",
+            "tauth", "ktauth", "smartotp", "mobileid", "yessign", "crosscert", "signkorea", "minwon"
     };
 
     private static volatile HandsService instance;

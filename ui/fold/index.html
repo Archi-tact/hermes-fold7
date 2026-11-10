@@ -835,6 +835,7 @@ autosize(); renderHands();
 const PROVIDERS = [
   { id: "nvidia", name: "NVIDIA", tag: "무료 · 추천", env: "NVIDIA_API_KEY", ph: "nvapi-…", url: "https://build.nvidia.com",
     help: "build.nvidia.com 로그인 → 아무 모델 → 'Get API Key' 에서 무료 키 발급", models: ["nvidia/nemotron-3-ultra-550b-a55b", "nvidia/nemotron-3-super-120b-a12b", "nvidia/nemotron-3.5-super-vl-120b-a12b", "moonshotai/kimi-k2.6", "z-ai/glm-5.3"] },
+$L
   // ChatGPT 구독(Plus/Pro) — API 키 대신 로그인. 로그인은 Termux 에서 한 번: hermes-proot model → OpenAI Codex
   { id: "openai-codex", name: "ChatGPT 구독", tag: "키 불필요", env: null, oauth: true, ph: "키 필요 없음 (ChatGPT 로그인)", url: "https://chatgpt.com",
     help: "Termux 에서 한 번만: hermes-proot model → 'OpenAI Codex' → 링크 열어 ChatGPT 로그인 → 코드 입력. 그 뒤엔 여기서 모델만 고르면 돼요", models: ["gpt-6.1-sol", "gpt-6.1-terra", "gpt-6-astra", "gpt-6-luna"] },

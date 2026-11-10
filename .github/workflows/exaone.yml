@@ -1,0 +1,86 @@
+# K-EXAONE 2.5 연결 — 실제 Hermes 가 문서대로 동작하는 가짜 EXAONE 서버에 올바른 요청을 보내는지 검사
+name: exaone
+on:
+  workflow_dispatch:
+  push:
+    paths: ["scripts/85-exaone.sh", "lab/exaone/**", ".github/workflows/exaone.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      HERMES_MODE: apt
+      EXAONE_BASE: http://127.0.0.1:18650/v1
+      KEY: test-exaone-key.123
+    steps:
+      - uses: actions/checkout@v4
+      - name: Hermes 설치 (공식 install.sh)
+        run: |
+          curl -fsSL https://hermes-agent.nousresearch.com/install.sh -o "$RUNNER_TEMP/install.sh"
+          bash "$RUNNER_TEMP/install.sh" --non-interactive --skip-browser --skip-computer-use
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: 설치 스크립트 — 키 오류 시 기존 모델 유지, 성공 시 전환
+        shell: bash
+        run: |
+          nohup python3 lab/exaone/mock_exaone.py 18650 "$RUNNER_TEMP/mock.jsonl" > "$RUNNER_TEMP/mock.log" 2>&1 &
+          sleep 1
+          check() { if eval "$1"; then echo "OK   $2"; else echo "FAIL $2"; exit 1; fi; }
+          hermes config set approvals.mode manual
+          # 전에 쓰던 제공자 설정이 남아 있는 폰과 같은 상태
+          hermes config set model.provider nvidia
+          hermes config set model.default nvidia/nemotron-3-ultra-550b-a55b
+          hermes config set model.base_url https://invalid.example/v1
+          if EXAONE_API_KEY=wrong-key bash scripts/85-exaone.sh > "$RUNNER_TEMP/bad.log" 2>&1; then echo "FAIL 틀린 키가 통과"; exit 1; fi
+          cat "$RUNNER_TEMP/bad.log"
+          check 'grep -q "키가 맞지 않습니다" "$RUNNER_TEMP/bad.log"' "틀린 키 안내"
+          check '[ "$(hermes config get model.provider | tail -1 | tr -d " ")" = nvidia ] || hermes config get model.provider | grep -q nvidia' "틀린 키면 기존 모델 유지"
+          EXAONE_API_KEY="$KEY" bash scripts/85-exaone.sh | tee "$RUNNER_TEMP/ok.log"
+          check 'grep -q "준비 완료" "$RUNNER_TEMP/ok.log"' "설치 완료"
+          check '! grep -qF "$KEY" "$RUNNER_TEMP/ok.log"' "키가 화면에 안 나옴"
+          check '! grep -qF "$KEY" "$HOME/.hermes/config.yaml"' "키가 config.yaml 에 안 들어감"
+          check '[ "$(grep -c "^EXAONE_API_KEY=" "$HOME/.hermes/.env")" = 1 ] && [ "$(stat -c %a "$HOME/.hermes/.env")" = 600 ]' ".env 에 한 번만, 권한 600"
+          check 'hermes config get model.provider | grep -q custom:exaone' "기본 제공자 전환"
+          sed -n '/^providers:/,/^[a-z_]*:$/p' "$HOME/.hermes/config.yaml" | head -30
+      - name: 실제 Hermes 대화 + 도구 호출
+        timeout-minutes: 10
+        shell: bash
+        run: |
+          check() { if eval "$1"; then echo "OK   $2"; else echo "FAIL $2"; exit 1; fi; }
+          : > "$RUNNER_TEMP/mock.jsonl"
+          hermes chat -Q -q "EXAONE_TOOL_TEST 터미널로 실행해 줘" 2>&1 | tee "$RUNNER_TEMP/chat.log"
+          cat "$RUNNER_TEMP/mock.jsonl"
+          check 'grep -q "exaone-tool-ok" "$RUNNER_TEMP/chat.log"' "도구 실행 후 결과로 답변"
+          python3 - "$RUNNER_TEMP/mock.jsonl" <<'PY'
+          import json, sys
+          rows = [json.loads(l) for l in open(sys.argv[1], encoding="utf-8")]
+          main = [r for r in rows if r["tools"]]
+          def need(c, m):
+              print(("OK   " if c else "FAIL ") + m)
+              if not c: sys.exit(1)
+          need(len(main) >= 2, "도구 포함 요청 2회 이상 (호출 → 결과 전달)")
+          need(all(r["path"] == "/v1/chat/completions" and r["key_ok"] for r in rows), "경로와 인증 정확")
+          need(all(r["model"] == "k-exaone_v2.5" for r in rows), "모델 ID 정확")
+          need(all(r["reasoning_effort"] in (None, "low", "high", "max") for r in rows), "reasoning_effort 는 문서 허용값만: %s" % sorted({str(r["reasoning_effort"]) for r in rows}))
+          need(all(r["preserve_thinking"] is True for r in main), "preserve_thinking 전달")
+          need("tool" in main[-1]["roles"], "도구 결과를 tool 메시지로 전달")
+          PY
+      - name: Hermes Fold 화면의 저장 경로 (API 키 목록 · 모델 지정)
+        shell: bash
+        run: |
+          check() { if eval "$1"; then echo "OK   $2"; else echo "FAIL $2"; exit 1; fi; }
+          bash scripts/80-hermes-fold.sh setup | tee "$RUNNER_TEMP/fold.log"
+          PW="$(grep -oP '비밀번호 \K\S+' "$RUNNER_TEMP/fold.log" | head -1)"; echo "::add-mask::$PW"
+          bash scripts/80-hermes-fold.sh start
+          U=http://127.0.0.1:9130; J="$RUNNER_TEMP/jar"; H='Content-Type: application/json'
+          curl -sf -c "$J" -H "$H" -d "{\"provider\":\"basic\",\"username\":\"fold\",\"password\":\"$PW\",\"next\":\"/\"}" $U/auth/password-login >/dev/null
+          curl -sf -b "$J" $U/api/env | jq -e '.EXAONE_API_KEY.is_set == true' >/dev/null && echo "OK   화면이 저장된 키를 인식" || { echo "FAIL 키 인식"; exit 1; }
+          hermes config set model.provider nvidia >/dev/null
+          R="$(curl -s -b "$J" -H "$H" -d '{"scope":"main","provider":"custom:exaone","model":"k-exaone_v2.5"}' $U/api/model/set)"; echo "$R" | cut -c1-300
+          check 'hermes config get model.provider | grep -q custom:exaone' "화면에서 EXAONE 선택 저장"
+          I="$(curl -sf -b "$J" $U/api/model/info)"; echo "$I" | jq -c '{model,provider,effective_context_length}'
+          check '[ "$(echo "$I" | jq -r .provider)" = custom:exaone ]' "화면의 현재 제공자 표시 (id 일치)"
+          bash scripts/80-hermes-fold.sh stop

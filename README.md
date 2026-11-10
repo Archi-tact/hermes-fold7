@@ -203,6 +203,7 @@ sms-send=deny          # 문자 발송 아예 금지
 | `scripts/60-weather-brief.sh` | 매일 날씨 브리핑 예약 작업 |
 | `scripts/70-skills-storage.sh` | 스킬을 내장 메모리로 내보내기 / 검토 후 가져오기 |
 | `scripts/80-hermes-fold.sh`, `ui/fold/` | 폰 전용 화면(Hermes Fold) + PC Desktop 원격 연결 |
+| `scripts/85-exaone.sh` | K-EXAONE 2.5 API 를 Hermes 모델로 연결 |
 | `android/hands/` | Hermes Hands 앱 (접근성 · 보호막 · 일시정지 · 스크립트 실행) |
 | `skills/fold7-hands/SKILL.md` | 앱 조작 방법(읽기→스크립트→레시피)을 가르치는 스킬 |
 

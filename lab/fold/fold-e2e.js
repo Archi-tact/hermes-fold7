@@ -69,6 +69,20 @@ async function waitTurn(page, ms = 240000) {   // 답변이 끝날 때까지 (�
     (await page.locator("#setup.on").count()) === 0 ? ok("새로고침 후에도 설정 유지 (다시 묻지 않음)") : bad("설정 화면이 또 뜸");
   }
 
+  console.log("== 2c. 추론 강도 버튼 (🧠) → Hermes 설정에 저장 · 새로고침 후 유지");
+  await page.evaluate(() => document.getElementById("setup").classList.remove("on"));
+  await page.click("#effort");
+  const effs = await page.locator("#efforts .eff").count();
+  effs >= 3 ? ok("추론 강도 선택지 " + effs + "개") : bad("선택지 " + effs);
+  await shot(page, "cover-effort");
+  await page.click('#efforts .eff[data-v="low"]');
+  await page.waitForSelector("#effortMsg.ok", { timeout: 15000 }).then(() => ok("빠르게(low) 적용"))
+    .catch(async () => bad("적용 실패: " + await page.textContent("#effortMsg")));
+  await page.reload(); await page.waitForSelector("#conn.on", { timeout: 60000 }).catch(() => {});
+  await page.waitForFunction(() => /빠르게/.test(document.getElementById("effort").textContent), null, { timeout: 15000 })
+    .then(() => ok("새로고침 후에도 빠르게 유지 (설정 파일에 저장됨)")).catch(async () => bad("유지 안 됨: " + await page.textContent("#effort")));
+  await page.evaluate(() => document.getElementById("setup").classList.remove("on"));
+
   if (process.env.HAS_KEY === "1") {
     console.log("== 3. 실제 모델과 대화 (스트리밍)");
     await page.fill("#input", "안녕! 한 문장으로 너를 소개해줘.");

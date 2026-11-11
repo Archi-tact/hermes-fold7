@@ -51,7 +51,8 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 .icon:hover{background:var(--sunk);color:var(--text)}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--faint);display:inline-block}
 .dot.on{background:var(--ok)} .dot.wait{background:var(--warn)}
-.model{font:12px var(--mono);color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:3px 9px;white-space:nowrap;max-width:42vw;overflow:hidden;text-overflow:ellipsis}
+.model{font:12px var(--mono);color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:3px 9px;white-space:nowrap;max-width:min(42vw,360px);overflow:hidden;text-overflow:ellipsis}
+@media (max-width:520px){.model{max-width:28vw}}
 .chat{flex:1;overflow:auto;padding:18px 14px 8px;scroll-behavior:smooth}
 .inner{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
 .msg{line-height:1.6;word-wrap:break-word}
@@ -194,6 +195,11 @@ textarea{flex:1;border:0;outline:0;resize:none;background:none;color:var(--text)
 .field input:focus,.field select:focus{outline:0;border-color:var(--accent)}
 .sheet .row{display:flex;gap:8px;margin-top:14px} .sheet .row .btn{flex:1;padding:11px}
 .note{font-size:12.5px;color:var(--faint);margin-top:10px;line-height:1.5}
+.effort{font:12px var(--sans);color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:3px 9px;white-space:nowrap}
+.efforts{display:grid;gap:8px;margin:6px 0 4px}
+.eff{border:1px solid var(--line);border-radius:12px;padding:12px 14px;text-align:left;background:var(--bg);color:var(--text)}
+.eff b{font-size:15px} .eff small{display:block;color:var(--muted);font-size:12.5px;margin-top:2px}
+.eff.on{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent);background:var(--accent-soft)}
 .msgline{font-size:14px;margin-top:10px;min-height:20px} .msgline.ok{color:var(--ok)} .msgline.bad{color:var(--bad)}
 </style>
 </head>
@@ -211,6 +217,7 @@ textarea{flex:1;border:0;outline:0;resize:none;background:none;color:var(--text)
       <span class="dot" id="conn" title="연결 상태"></span>
       <div class="title" id="title">Hermes</div>
       <button class="model" id="model" title="모델 · API 키">…</button>
+      <button class="effort" id="effort" title="추론 강도">🧠 …</button>
       <button class="icon btn-phone" id="openPhone" aria-label="폰 패널">📱</button>
     </header>
     <section class="chat" id="chat"><div class="inner" id="msgs">
@@ -274,6 +281,16 @@ textarea{flex:1;border:0;outline:0;resize:none;background:none;color:var(--text)
     <div class="note" id="keyHelp"></div>
     <div class="msgline" id="setupMsg"></div>
     <div class="row"><button class="btn" id="setupCancel">닫기</button><button class="btn pri" id="setupSave">저장하고 시작</button></div>
+  </div>
+</div>
+
+<div class="modal" id="effortSheet" role="dialog" aria-modal="true" aria-labelledby="effortTitle">
+  <div class="sheet">
+    <h3 id="effortTitle">추론 강도</h3>
+    <div class="sub">답하기 전에 얼마나 생각할지 정해요. 지금 대화에 바로 적용되고, 음성 앱에도 똑같이 적용돼요.</div>
+    <div class="efforts" id="efforts"></div>
+    <div class="msgline" id="effortMsg"></div>
+    <div class="row"><button class="btn" id="effortClose">닫기</button></div>
   </div>
 </div>
 
@@ -576,6 +593,7 @@ function onEvent(e) {
       S.lastPrompt = null;
       aiSeal(); setBusy(false); loadSessions(); break;
     }
+    case "session.info": if (p.reasoning_effort !== undefined) showEffort(p.reasoning_effort); if (p.provider) curProvider = p.provider; break;
     case "request.cancel": break;
   }
 }
@@ -603,7 +621,7 @@ function connectNow() {   // 화면으로 돌아왔을 때: 끊겨 있으면 기
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") connectNow(); });
 addEventListener("pageshow", connectNow); addEventListener("online", connectNow); addEventListener("focus", connectNow);
 async function connect() {
-  if (DEMO) { $("conn").className = "dot on"; $("model").textContent = "nemotron-3-ultra (demo)"; return Demo.boot(); }
+  if (DEMO) { $("conn").className = "dot on"; $("model").textContent = "nemotron-3-ultra (demo)"; Demo.boot(); return loadEffort(); }
   $("conn").className = "dot wait"; connecting = true;
   try {
     const [k, v] = await authParam();
@@ -889,6 +907,8 @@ async function saveSetup() {
       if (!(env[pick.env] && env[pick.env].is_set)) throw new Error(`${pick.name} API 키를 넣어 주세요`);
     }
     await api("/api/model/set", { method: "POST", body: JSON.stringify({ scope: "main", provider: pick.id, model }) });
+    curProvider = pick.id;
+    if (ONLY_LHM.has(pick.id) && !effortsFor(pick.id).some((e) => e[0] === curEffort)) await setEffort("high");
     try { await call("reload.env", {}); } catch (_) {}
     $("apiKey").value = "";
     m.textContent = "✓ 저장됨 — 새 대화를 시작해요"; m.className = "msgline ok";
@@ -897,10 +917,47 @@ async function saveSetup() {
   } catch (e) { m.textContent = "✕ " + e.message; m.className = "msgline bad"; }
   finally { $("setupSave").disabled = false; }
 }
+/* ───────────── 추론 강도 (Hermes config.set reasoning · 전역 + 지금 대화) ───────────── */
+const EFFORTS = [["low", "빠르게", "짧게 생각하고 바로 답해요 · 음성에 좋아요"], ["medium", "보통", "대부분의 일에 알맞아요"],
+  ["high", "깊게", "꼼꼼히 생각해요 · 조금 느려요"], ["max", "최대", "가장 정확하지만 가장 느려요"]];
+// EXAONE 은 low/high/max 만 받음 (medium 을 보내면 오류)
+const ONLY_LHM = new Set(["custom:exaone"]);
+let curProvider = "", curEffort = "";
+const effortsFor = (prov) => ONLY_LHM.has(prov) ? EFFORTS.filter((e) => e[0] !== "medium") : EFFORTS;
+function showEffort(v) {
+  if (v !== undefined) curEffort = v || "medium";
+  const e = EFFORTS.find((x) => x[0] === curEffort);
+  $("effort").textContent = "🧠 " + (e ? e[1] : curEffort === "none" ? "끔" : curEffort);
+}
+async function setEffort(v) {
+  await call("config.set", { key: "reasoning", value: v, scope: "global", ...(S.sid ? { session_id: S.sid } : {}) });
+  showEffort(v);
+}
+async function loadEffort() {
+  try { const r = await call("config.get", { key: "reasoning", ...(S.sid ? { session_id: S.sid } : {}) }); showEffort(r && r.value); } catch (_) {}
+  // EXAONE 인데 허용 안 되는 값(보통 등)이면 '깊게' 로 맞춤
+  if (ONLY_LHM.has(curProvider) && !effortsFor(curProvider).some((e) => e[0] === curEffort)) { try { await setEffort("high"); } catch (_) {} }
+}
+function openEffort() {
+  $("effortMsg").textContent = ""; $("effortMsg").className = "msgline";
+  $("efforts").innerHTML = effortsFor(curProvider).map(([v, name, sub]) =>
+    `<button class="eff${v === curEffort ? " on" : ""}" data-v="${v}"><b>${name}</b><small>${sub}</small></button>`).join("");
+  $("efforts").querySelectorAll(".eff").forEach((b) => b.onclick = async () => {
+    const m = $("effortMsg"); m.className = "msgline"; m.textContent = "바꾸는 중…";
+    try { await setEffort(b.dataset.v); m.textContent = "✓ 적용됨"; m.className = "msgline ok"; setTimeout(() => $("effortSheet").classList.remove("on"), 500); }
+    catch (e) { m.textContent = "✕ " + e.message; m.className = "msgline bad"; }
+  });
+  $("effortSheet").classList.add("on");
+}
+$("effort").onclick = openEffort;
+$("effortClose").onclick = () => $("effortSheet").classList.remove("on");
+
 async function checkSetup() {
   try {
     const [info, env] = await Promise.all([api("/api/model/info"), api("/api/env")]);
     if (info && info.model) $("model").textContent = info.model;
+    curProvider = (info && info.provider) || "";
+    loadEffort();
     const cur = PROVIDERS.find((p) => p.id === (info && info.provider));
     if (cur) pick = cur;
     const anyKey = PROVIDERS.some((p) => p.env && env[p.env] && env[p.env].is_set);
@@ -926,6 +983,8 @@ const Demo = {
     if (m === "session.create") return Promise.resolve({ session_id: "d" + Date.now(), info: { model: "nemotron-3-ultra (demo)" } });
     if (m === "session.resume") return Promise.resolve({ session_id: p.session_id, messages: [] });
     if (m === "prompt.submit") { this.play(p.text); return Promise.resolve({ ok: true }); }
+    if (m === "config.get" && p.key === "reasoning") return Promise.resolve({ value: this.effort || "medium" });
+    if (m === "config.set" && p.key === "reasoning") { this.effort = p.value; return Promise.resolve({ value: p.value }); }
     return Promise.resolve({});
   },
   reply(id, r) { if (id === "demo-ap" && r.choice !== "deny") this.cont && this.cont(); },

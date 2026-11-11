@@ -3,12 +3,12 @@
 #
 #   bash scripts/85-exaone.sh              # 등록 + 키 입력(화면에 안 보임) + 연결 확인 + 기본 모델로 지정
 #   bash scripts/85-exaone.sh test         # 저장된 키로 연결만 확인
-#   bash scripts/85-exaone.sh effort low   # 추론 강도: low(빠름) | high(기본) | max(정확·느림)
+#   bash scripts/85-exaone.sh effort low   # 추론 강도: low(빠름) | high(기본) | max(정확·느림) — Hermes Fold 위쪽 🧠 버튼으로도 바꿈
 #
 # 메모:
 #   · OpenAI 호환 API → Hermes 의 이름 붙은 제공자(custom:exaone) 로 등록. 키는 .env(600) 의 EXAONE_API_KEY 에만.
 #   · Hermes 는 강도를 지정하지 않으면 reasoning_effort=medium 을 보내는데 EXAONE 은 low/high/max 만 받음
-#     → 제공자의 extra_body 로 값을 고정.
+#     → agent.reasoning_effort 를 high 로 맞춤 (Fold 화면 🧠 버튼이 바꾸는 값과 같음 · 화면은 EXAONE 일 때 보통을 숨김)
 #   · 연결 확인이 실패하면 기본 모델은 바꾸지 않음 (쓰던 모델이 그대로 동작).
 #   · proot-distro 는 인자를 셸로 다시 해석할 수 있어 키는 인자가 아니라 stdin 스크립트로 전달.
 set -euo pipefail
@@ -33,7 +33,7 @@ register() {
   $HC config set providers.exaone.default_model "$MODEL" >/dev/null
   $HC config set providers.exaone.context_length 524288 >/dev/null
   $HC config set providers.exaone.discover_models false >/dev/null
-  $HC config set providers.exaone.extra_body.reasoning_effort "${EXAONE_EFFORT:-high}" >/dev/null
+  $HC config unset providers.exaone.extra_body.reasoning_effort >/dev/null 2>&1 || true   # 예전 버전이 고정해 둔 값 (화면에서 바꿔도 안 먹던 원인)
   $HC config set providers.exaone.extra_body.chat_template_kwargs.preserve_thinking true >/dev/null   # 문서 권장 (에이전트·멀티턴)
 }
 
@@ -68,7 +68,10 @@ __S__
   } | guest_sh
 }
 
+effort_now() { $HC config get agent.reasoning_effort 2>/dev/null | tr -d " \"'" | grep -oE '(none|minimal|low|medium|high|xhigh|max|ultra)$' | tail -1; }
+
 set_main() {
+  case "$(effort_now)" in low|high|max) ;; *) $HC config set agent.reasoning_effort "${EXAONE_EFFORT:-high}" >/dev/null ;; esac
   $HC config set model.provider custom:exaone >/dev/null
   $HC config set model.default "$MODEL" >/dev/null
   $HC config set model.base_url "" >/dev/null 2>&1 || true   # 전에 쓰던 제공자 주소가 남아 있으면 그쪽으로 요청이 감
@@ -117,7 +120,7 @@ case "${1:-setup}" in
   test) test_api ;;
   effort)
     case "${2:-}" in low|high|max) ;; *) echo "사용법: bash scripts/85-exaone.sh effort low|high|max" >&2; exit 1 ;; esac
-    $HC config set providers.exaone.extra_body.reasoning_effort "$2" >/dev/null
-    say "추론 강도: $2 (새 대화부터)" ;;
+    $HC config set agent.reasoning_effort "$2" >/dev/null
+    say "추론 강도: $2 (새 대화부터 · 지금 대화는 Fold 화면 🧠 버튼으로)" ;;
   *) sed -n 2,6p "$0"; exit 1 ;;
 esac

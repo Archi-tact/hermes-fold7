@@ -34,6 +34,9 @@ jobs:
           hermes config set model.provider nvidia
           hermes config set model.default nvidia/nemotron-3-ultra-550b-a55b
           hermes config set model.base_url https://invalid.example/v1
+          # 예전 버전 스크립트가 고정해 둔 값 → 새 스크립트가 지워야 함
+          hermes config set providers.exaone.extra_body.reasoning_effort high
+          hermes config set agent.reasoning_effort medium
           if EXAONE_API_KEY=wrong-key bash scripts/85-exaone.sh > "$RUNNER_TEMP/bad.log" 2>&1; then echo "FAIL 틀린 키가 통과"; exit 1; fi
           cat "$RUNNER_TEMP/bad.log"
           check 'grep -q "키가 맞지 않습니다" "$RUNNER_TEMP/bad.log"' "틀린 키 안내"
@@ -44,6 +47,8 @@ jobs:
           check '! grep -qF "$KEY" "$HOME/.hermes/config.yaml"' "키가 config.yaml 에 안 들어감"
           check '[ "$(grep -c "^EXAONE_API_KEY=" "$HOME/.hermes/.env")" = 1 ] && [ "$(stat -c %a "$HOME/.hermes/.env")" = 600 ]' ".env 에 한 번만, 권한 600"
           check 'hermes config get model.provider | grep -q custom:exaone' "기본 제공자 전환"
+          check '! hermes config get providers.exaone.extra_body 2>/dev/null | grep -q reasoning_effort' "예전 고정값 제거"
+          check 'hermes config get agent.reasoning_effort | grep -q high' "보통(medium) → 깊게(high) 로 맞춤"
           sed -n '/^providers:/,/^[a-z_]*:$/p' "$HOME/.hermes/config.yaml" | head -30
       - name: 실제 Hermes 대화 + 도구 호출
         timeout-minutes: 10
@@ -68,6 +73,13 @@ jobs:
           need(all(r["preserve_thinking"] is True for r in main), "preserve_thinking 전달")
           need("tool" in main[-1]["roles"], "도구 결과를 tool 메시지로 전달")
           PY
+          # 화면 🧠 버튼이 바꾸는 값(agent.reasoning_effort)이 실제 요청에 반영되는지
+          hermes config set agent.reasoning_effort low
+          : > "$RUNNER_TEMP/mock.jsonl"
+          hermes chat -Q -q "안녕" > /dev/null 2>&1 || true
+          cat "$RUNNER_TEMP/mock.jsonl"
+          check 'grep -q "\"reasoning_effort\": \"low\"" "$RUNNER_TEMP/mock.jsonl" && ! grep -q "\"reasoning_effort\": \"high\"" "$RUNNER_TEMP/mock.jsonl"' "추론 강도 변경이 요청에 반영 (low)"
+          hermes config set agent.reasoning_effort high
       - name: Hermes Fold 화면의 저장 경로 (API 키 목록 · 모델 지정)
         shell: bash
         run: |
